@@ -1,11 +1,16 @@
+"""
+Capsules Layers
+
+PyTorch implementation by Vu.
+"""
 import torch
 from torch import nn
 import numpy as np
 import torch.nn.functional as F
 
 
-
-def caps_em_routing1(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
+############EM Routing################
+def caps_em_routing_CPU(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
     """
     i in B: layer l, j in h*w*C: layer l + 1
     with each cell in h*w, compute on matrix B*C
@@ -71,7 +76,6 @@ def caps_em_routing1(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
     a_out =  a_out.view(b, h, w, C, 1)
     return mu_cuda, a_out
 
-############EM Routing################
 def caps_em_routing(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
     """
     i in B: layer l, j in h*w*C: layer l + 1
@@ -98,7 +102,7 @@ def caps_em_routing(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
             # print("r init", torch.cuda.memory_allocated() / 1024**2)
         else:
             ln_pjh = -1. * (v - mu)**2 / (2 * sigma_sq) - torch.log(sigma_sq.sqrt()) - 0.5*ln_2pi
-            print("ln_pjh ", torch.cuda.memory_allocated() / 1024**2)
+            # print("ln_pjh ", torch.cuda.memory_allocated() / 1024**2)
             ln_ap = ln_pjh.sum(dim=5) + torch.log(a_out.view(b, h, w, 1, C))
             # print("ln_ap ", torch.cuda.memory_allocated() / 1024**2)
             r = F.softmax(ln_ap, dim=4)
@@ -109,9 +113,9 @@ def caps_em_routing(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
         coeff = coeff.view(b, h, w, B, C, 1)
         # print("coeff", torch.cuda.memory_allocated() / 1024**2)
         mu = torch.sum(coeff * v, dim=3, keepdim=True)
-        print("mu", torch.cuda.memory_allocated() / 1024**2)
+        # print("mu", torch.cuda.memory_allocated() / 1024**2)
         sigma_sq = torch.sum(coeff * (v - mu)**2, dim=3, keepdim=True)
-        print("sigma_sq", torch.cuda.memory_allocated() / 1024**2)
+        # print("sigma_sq", torch.cuda.memory_allocated() / 1024**2)
         r_sum = r_sum.view(b, h, w, 1, C, 1)
         cost_h = (beta_u + torch.log(sigma_sq.sqrt())) * r_sum
         # print("cost_h ", torch.cuda.memory_allocated() / 1024**2)
@@ -224,8 +228,6 @@ class ConvCaps(nn.Module):
         b, h, w, B, psize = x.shape
         #b: fix dimmension, B, random dimmension
         x = x.view(b, h, w, B, 1, P, P)
-        # Weights = Weights.repeat(b, h, w, 1, 1, 1, 1)
-        # x = x.repeat(1, 1, 1, 1, C, 1, 1)
         v = (x @ Weights) #(b*H*W)*(K*K*B)*C*P*P
         v = v.view(b, h, w, B, C, P*P)
         return v
@@ -316,9 +318,7 @@ class FCCaps(nn.Module):
         #b: fix dimmension, B, random dimmension
         x = x.view(b, B, 1, P, P)
 
-        w = w.repeat(b, 1, 1, 1, 1)
-        x = x.repeat(1, 1, C, 1, 1)
-        v = torch.matmul(x, w) # b*B*C*P*P
+        v = x @ w # b*B*C*P*P
         v = v.view(b, B, C, P*P)
         return v
     

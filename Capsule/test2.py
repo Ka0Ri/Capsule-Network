@@ -44,7 +44,6 @@ class CapsNet(nn.Module):
         pose2, a2 = self.conv_caps2(pose1, a1)
         pose_class, a_class = self.class_caps(pose2, a2)
         return pose_class, a_class
-        return relu1
 
 if __name__ == "__main__":
     

@@ -1,13 +1,13 @@
 """
 EM Routing Between Capsules
 
-PyTorch implementation by yl-1993.
-Modified by Vu
+PyTorch implementation by Vu.
 """
 import sys
 sys.setrecursionlimit(1500)
 
 import torch
+import cv2
 from torch import nn
 import numpy as np
 import torch.nn.functional as F
@@ -16,11 +16,12 @@ from torch.autograd import Variable
 from torch.optim import Adam
 from torchnet.engine import Engine
 from torchnet.logger import VisdomPlotLogger, VisdomLogger
+from torchvision.utils import make_grid
 from torchvision.datasets.mnist import MNIST
 from tqdm import tqdm
 import torchnet as tnt
 
-from model import PrimaryCaps, ConvCaps
+from CapsuleNet import PrimaryCaps, ConvCaps
 BATCH_SIZE = 50
 NUM_CLASSES = 10
 NUM_EPOCHS = 50
@@ -62,25 +63,36 @@ class CapsNet(nn.Module):
         self.relu1 = nn.ReLU(inplace=False)
         self.primary_caps = PrimaryCaps(A, B, 1, P, stride=1)
         self.conv_caps1 = ConvCaps(B, C, K, P, stride=2, iters=iters)
-        self.conv_caps2 = ConvCaps(C, D, K, P, stride=1, iters=iters)
+        # self.conv_caps2 = ConvCaps(C, D, K, P, stride=1, iters=iters)
         self.class_caps = ConvCaps(D, E, 1, P, stride=1, iters=iters, coor_add=True, w_shared=True)
 
-    def forward(self, x):
-        # conv1 = self.conv1(x)
-        # relu1 = self.relu1(conv1)
-        # pose, a = self.primary_caps(relu1)
-        # pose1, a1 = self.conv_caps1(pose, a)
-        # pose2, a2 = self.conv_caps2(pose1, a1)
-        # pose_class, a_class = self.class_caps(pose2, a2)
+        self.decoder = nn.Sequential(
+            nn.Linear(16 * NUM_CLASSES, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, 784),
+            nn.Sigmoid()
+        )
 
-        x = self.conv1(x)
-        # x = self.bn1(x)
-        x = self.relu1(x)
-        x = self.primary_caps(x)
-        x = self.conv_caps1(x)
-        x = self.conv_caps2(x)
-        x = self.class_caps(x)
-        return x
+
+    def forward(self, x, y=None):
+        conv1 = self.conv1(x)
+        relu1 = self.relu1(conv1)
+        pose, a = self.primary_caps(relu1)
+        pose1, a1 = self.conv_caps1(pose, a)
+        # pose2, a2 = self.conv_caps2(pose1, a1)
+        pose_class, a_class = self.class_caps(pose1, a1)
+        a_class = a_class.squeeze()
+        pose_class = pose_class.squeeze()
+   
+        if y is None:
+            # In all batches, get the most active capsule.
+            _, max_length_indices = a_class.max(dim=1)
+            select = Variable(torch.eye(NUM_CLASSES)).cuda().index_select(dim=0, index=max_length_indices.data)
+        else:
+            select = torch.eye(NUM_CLASSES).cuda().index_select(dim=0, index=y)
+        reconstructions = self.decoder((pose_class * select[:, :, None]).view(x.size(0), -1))
+        return a_class, reconstructions
+
 
 class SpreadLoss(_Loss):
 
@@ -89,8 +101,9 @@ class SpreadLoss(_Loss):
         self.m_min = m_min
         self.m_max = m_max
         self.num_class = num_class
+        self.reconstruction_loss = nn.MSELoss(size_average=True)
 
-    def forward(self, x, target, r):
+    def forward(self, images, x, target, reconstructions, r):
         b, E = x.shape
         margin = self.m_min + (self.m_max - self.m_min)*r
         
@@ -103,7 +116,10 @@ class SpreadLoss(_Loss):
         loss = loss**2
         loss = loss.sum() / b - margin**2#minus included margin
 
-        return loss
+        images = images.view(reconstructions.size()[0], -1)
+        reconstruction_loss = self.reconstruction_loss(reconstructions, images)
+
+        return loss +  0.005 * reconstruction_loss
 
 
 if __name__ == "__main__":
@@ -137,7 +153,9 @@ if __name__ == "__main__":
     confusion_logger = VisdomLogger('heatmap', opts={'title': 'Confusion matrix',
                                                      'columnnames': list(range(NUM_CLASSES)),
                                                      'rownames': list(range(NUM_CLASSES))})
-    
+    ground_truth_logger = VisdomLogger('image', opts={'title': 'Ground Truth'})
+    reconstruction_logger = VisdomLogger('image', opts={'title': 'Reconstruction'})
+
     def reset_meters():
         meter_accuracy.reset()
         meter_loss.reset()
@@ -174,6 +192,22 @@ if __name__ == "__main__":
             state['epoch'], meter_loss.value()[0], meter_accuracy.value()[0]))
 
         torch.save(model.state_dict(), 'epochs/epoch_%d.pt' % state['epoch'])
+
+        # Reconstruction visualization.
+        test_sample = next(iter(get_iterator(False)))
+
+        ground_truth = (test_sample[0].unsqueeze(1).float() / 255.0)
+        _, reconstructions = model(Variable(ground_truth).cuda())
+        reconstruction = reconstructions.cpu().view_as(ground_truth).data
+        grid_img = make_grid(reconstruction, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy()
+        grid_img = grid_img.transpose((1, 2, 0))
+        cv2.imwrite(str(r)+".jpg", 255*grid_img)
+        ground_truth_logger.log(
+            make_grid(ground_truth, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy())
+        reconstruction_logger.log(
+            make_grid(reconstruction, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy())
+
+        #increase r each epoch
         global r
         r = r + 1./NUM_EPOCHS
         print(r)
@@ -191,13 +225,16 @@ if __name__ == "__main__":
         data = augmentation(data.unsqueeze(1).float() / 255.0)
         labels = torch.LongTensor(labels)
         # labels = torch.eye(NUM_CLASSES).index_select(dim=0, index=labels)
-        data = Variable(data, requires_grad=False).cuda()
-        labels = Variable(labels, requires_grad=False).cuda()
+        data = Variable(data).cuda()
+        labels = Variable(labels).cuda()
         
-        a = model(data)
-        # a = a.squeeze()
-        loss = capsule_loss(a, labels, r)
-        prob = F.softmax(a, dim = 1)
+        if training:
+            classes, reconstructions = model(data, labels)
+        else:
+            classes, reconstructions = model(data)
+        loss = capsule_loss(data, classes, labels, reconstructions, r)
+
+        prob = F.softmax(classes, dim = 1)
         return loss, prob
 
 
