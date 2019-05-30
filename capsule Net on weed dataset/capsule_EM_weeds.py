@@ -1,30 +1,29 @@
 """
-Dynamic Routing Between Capsules
+EM Routing Between Capsules
 
-PyTorch implementation by Kenta Iwasaki @ Gram.AI.
-Modified by Vu
+PyTorch implementation by Vu.
 """
 import sys
 sys.setrecursionlimit(1500)
 
 import torch
-import torch.nn.functional as F
+import cv2
 from torch import nn
 import numpy as np
-
+import torch.nn.functional as F
+from torch.nn.modules.loss import _Loss
 from torch.autograd import Variable
 from torch.optim import Adam
 from torchnet.engine import Engine
 from torchnet.logger import VisdomPlotLogger, VisdomLogger
 from torchvision.utils import make_grid
-from torchvision.datasets.svhn import SVHN
-from torch.utils import data
-import os
-import cv2
+from torchvision.datasets.mnist import MNIST
 from tqdm import tqdm
 import torchnet as tnt
 
-BATCH_SIZE = 100
+from CapsuleNet import PrimaryCaps, ConvCaps
+
+BATCH_SIZE = 50
 NUM_CLASSES = 21
 NUM_EPOCHS = 100
 NUM_ROUTING_ITERATIONS = 3
@@ -54,77 +53,30 @@ class MyDataset(data.Dataset):
        
         return X, y
 
-class CapsuleLayer(nn.Module):
+
+class CapsNet(nn.Module):
     """
-    create CapsuleLayer and routing
+    Args:
+        A: output channels of normal conv
+        B: output channels of primary caps
+        C: output channels of 1st conv caps
+        D: output channels of 2nd conv caps
+        E: output channels of class caps (i.e. number of classes)
+        K: kernel of conv caps
+        P: size of square pose matrix
+        iters: number of EM iterations
+        ...
     """
-    def __init__(self, num_capsules, num_route_nodes, in_channels, out_channels, kernel_size=None, stride=None,
-                 num_iterations=NUM_ROUTING_ITERATIONS):
-        """
-        num_capsules = dimmension of output capsules (primary capsule)
-        out_channels = dimmension of output capsules (higher level capsule)
-        """
-        super(CapsuleLayer, self).__init__()
-        self.num_route_nodes = num_route_nodes
-        self.num_iterations = num_iterations
-        self.num_capsules = num_capsules
-        self.out_channels = out_channels
+    def __init__(self, A=32, B=8, C=16, D=16, E=10, K=3, P=4, iters=3):
+        super(CapsNet, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=A,
+                               kernel_size=5, stride=2)
+        self.relu1 = nn.ReLU(inplace=False)
+        self.primary_caps = PrimaryCaps(A, B, 1, P, stride=1)
+        self.conv_caps1 = ConvCaps(B, C, K, P, stride=2, iters=iters)
+        self.conv_caps2 = ConvCaps(C, D, K, P, stride=2, iters=iters)
+        self.class_caps = ConvCaps(D, E, 1, P, stride=2, iters=iters, coor_add=True, w_shared=True)
 
-        if num_route_nodes != -1:#higher capsule layer
-            self.route_weights = nn.Parameter(torch.randn(num_capsules, num_route_nodes, in_channels, out_channels))
-        else:#lowest capsule layer
-            self.capsules = nn.ModuleList(
-                [nn.Conv2d(in_channels, num_capsules, kernel_size=kernel_size, stride=stride, padding=0) for _ in
-                 range(out_channels)])
-
-    def squash(self, s, dim=-1):
-        """
-        Calculate non-linear squash function
-        s: unormalized capsule
-        v = (|s|^2)/(1+|s|^2)*(s/|s|)
-        """
-        squared_norm = (s ** 2).sum(dim=dim, keepdim=True)
-        scale = squared_norm / (1 + squared_norm)
-        v = scale * s / torch.sqrt(squared_norm)
-        return v
-
-    def forward(self, x):
-        """
-        Routing
-        x: capsules/features at l layer
-        v: capsules at l + 1 layer
-        """
-        if self.num_route_nodes != -1:#dynamic routing
-            #u = x * W matrixes in the last 2 dim are multiplied
-            u = x[:,None, :, None, :] @ self.route_weights[None,: , :, :, :]
-            #b = 0 => all elements of c are same, 
-            #after each iteration, all elements of b in the last 2 dim are same
-            b = Variable(torch.zeros(*u.size())).cuda()
-            for i in range(self.num_iterations):
-                c = F.softmax(b, dim=2)#calculate coefficient c = softmax(b)
-                v = self.squash((c * u).sum(dim=2, keepdim=True))#non-linear activation of weighted sum v = sum(c*u)
-                if i != self.num_iterations - 1:
-                    b = b + (u * v).sum(dim=-1, keepdim=True)#consine similarity u*v
-        else:#features -> primary capsules
-            v = [capsule(x).view(x.size(0), -1, self.num_capsules) for capsule in self.capsules]
-            v = torch.cat(v, dim=1)
-            v = self.squash(v)
-        return v
-
-
-class CapsuleNet(nn.Module):
-    """
-    Capsule Network: 
-    Conv (256x(28x28)) -> primary Capsule ((32x10x10)x8) -> Capsule 1 (5x16) -> (Decoder) FC1 (512) -> FC2 (1024) -> FC3 (784=28x28)
-    """
-    def __init__(self):
-        super(CapsuleNet, self).__init__()
-
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=256, kernel_size=9, stride=2)
-        self.primary_capsules = CapsuleLayer(num_capsules=8, num_route_nodes=-1, in_channels=256, out_channels=32,
-                                             kernel_size=9, stride=2)
-        self.digit_capsules = CapsuleLayer(num_capsules=NUM_CLASSES, num_route_nodes=32*10*10, in_channels=8,
-                                           out_channels=16)
         self.decoder = nn.Sequential(
             nn.Linear(16 * NUM_CLASSES, 512),
             nn.ReLU(inplace=True),
@@ -134,62 +86,65 @@ class CapsuleNet(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, x, y=None):
-        # print("input", x.size())
-        x = F.relu(self.conv1(x), inplace=True)
-        # print("Con1", x.size())
-        x = self.primary_capsules(x)
-        # print("Primary capsule", x.size())
-        x = self.digit_capsules(x).squeeze()
-        # print("Capsule 1", x.size())
-        classes = (x ** 2).sum(dim=-1) ** 0.5
-        classes = F.softmax(classes, dim=-1)
-       
 
+    def forward(self, x, y=None):
+        conv1 = self.conv1(x)
+        relu1 = self.relu1(conv1)
+        pose, a = self.primary_caps(relu1)
+        pose1, a1 = self.conv_caps1(pose, a)
+        # pose2, a2 = self.conv_caps2(pose1, a1)
+        pose_class, a_class = self.class_caps(pose1, a1)
+        a_class = a_class.squeeze()
+        pose_class = pose_class.squeeze()
+   
         if y is None:
             # In all batches, get the most active capsule.
-            _, max_length_indices = classes.max(dim=1)
-            y = Variable(torch.eye(NUM_CLASSES)).cuda().index_select(dim=0, index=max_length_indices.data)
-        reconstructions = self.decoder((x * y[:, :, None]).view(x.size(0), -1))
-        # print("reconstructions", reconstructions.size())
+            _, max_length_indices = a_class.max(dim=1)
+            select = Variable(torch.eye(NUM_CLASSES)).cuda().index_select(dim=0, index=max_length_indices.data)
+        else:
+            select = torch.eye(NUM_CLASSES).cuda().index_select(dim=0, index=y)
+        reconstructions = self.decoder((pose_class * select[:, :, None]).view(x.size(0), -1))
+        return a_class, reconstructions
 
-        return classes, reconstructions
 
+class SpreadLoss(_Loss):
 
-class CapsuleLoss(nn.Module):
-    """
-    Capsule Loss: 
-    Loss = T*max(0, m+ - |v|)^2 + lambda*(1-T)*max(0, |v| - max-)^2 + alpha*|x-y|
-    """
-    def __init__(self):
-        super(CapsuleLoss, self).__init__()
-        self.reconstruction_loss = nn.MSELoss(size_average=False)
+    def __init__(self, m_min=0.2, m_max=0.9, num_class=10):
+        super(SpreadLoss, self).__init__()
+        self.m_min = m_min
+        self.m_max = m_max
+        self.num_class = num_class
+        self.reconstruction_loss = nn.MSELoss(size_average=True)
 
-    def forward(self, images, labels, classes, reconstructions):
-        left = F.relu(0.9 - classes, inplace=True) ** 2
-        right = F.relu(classes - 0.1, inplace=True) ** 2
-        margin_loss = labels * left + 0.5 * (1. - labels) * right
-        margin_loss = margin_loss.sum()
+    def forward(self, images, x, target, reconstructions, r):
+        b, E = x.shape
+        margin = self.m_min + (self.m_max - self.m_min)*r
+        
+        at = torch.cuda.FloatTensor(b).fill_(0)
+        for i, lb in enumerate(target):
+            at[i] = x[i][lb]
+        at = at.view(b, 1).repeat(1, E)
+        zeros = x.new_zeros(x.shape)
+        loss = torch.max(margin - (at - x), zeros)
+        loss = loss**2
+        loss = loss.sum() / b - margin**2#minus included margin
 
-        assert torch.numel(images) == torch.numel(reconstructions)#compare the length of 2 arrays
         images = images.view(reconstructions.size()[0], -1)
         reconstruction_loss = self.reconstruction_loss(reconstructions, images)
-        # return margin_loss / images.size(0)
-        return (margin_loss + 0.0005 * reconstruction_loss) / images.size(0)
+
+        return loss +  0.005 * reconstruction_loss
 
 
 if __name__ == "__main__":
-    
-
-    model = CapsuleNet()
-    # model.load_state_dict(torch.load('epochs/epoch_50.pt'))
+    r = 0
+    model = CapsNet(E=NUM_CLASSES)
     model.cuda()
-
+    capsule_loss = SpreadLoss(num_class=NUM_CLASSES)
+  
     print("# parameters:", sum(param.numel() for param in model.parameters()))
 
     ##------------------init------------------------##
     optimizer = Adam(model.parameters())
-    capsule_loss = CapsuleLoss()
     engine = Engine()#training loop
     meter_loss = tnt.meter.AverageValueMeter()
     meter_accuracy = tnt.meter.ClassErrorMeter(accuracy=True)
@@ -214,7 +169,7 @@ if __name__ == "__main__":
                                                      'rownames': list(range(NUM_CLASSES))})
     ground_truth_logger = VisdomLogger('image', opts={'title': 'Ground Truth'})
     reconstruction_logger = VisdomLogger('image', opts={'title': 'Reconstruction'})
-    
+
     def reset_meters():
         meter_accuracy.reset()
         meter_loss.reset()
@@ -253,7 +208,6 @@ if __name__ == "__main__":
         torch.save(model.state_dict(), 'epochs/epoch_%d.pt' % 0)
 
         # Reconstruction visualization.
-
         test_sample = next(iter(get_iterator(False)))
 
         ground_truth = (test_sample[0])
@@ -264,6 +218,12 @@ if __name__ == "__main__":
         reconstruction_logger.log(
             make_grid(reconstruction, nrow=int(BATCH_SIZE ** 0.5)))
 
+        #increase r each epoch
+        global r
+        r = r + 1./NUM_EPOCHS
+        print(r)
+        
+
     engine.hooks['on_sample'] = on_sample
     engine.hooks['on_forward'] = on_forward
     engine.hooks['on_start_epoch'] = on_start_epoch
@@ -272,18 +232,20 @@ if __name__ == "__main__":
 
     ##------------------main flow------------------------##
     def processor(sample):
-        Xs, ys, training = sample
-        ys = torch.LongTensor(ys)
-        ys = torch.eye(NUM_CLASSES).index_select(dim=0, index=ys)
-        Xs = Variable(Xs).cuda()
-        ys = Variable(ys).cuda()
+        data, labels, training = sample
+        labels = torch.LongTensor(labels)
+        # labels = torch.eye(NUM_CLASSES).index_select(dim=0, index=labels)
+        data = Variable(data).cuda()
+        labels = Variable(labels).cuda()
+        
         if training:
-            classes, reconstructions = model(Xs, ys)
+            classes, reconstructions = model(data, labels)
         else:
-            classes, reconstructions = model(Xs)
-        loss = capsule_loss(Xs, ys, classes, reconstructions)
+            classes, reconstructions = model(data)
+        loss = capsule_loss(data, classes, labels, reconstructions, r)
 
-        return loss, classes
+        prob = F.softmax(classes, dim = 1)
+        return loss, prob
 
 
     engine.train(processor, get_iterator(True), maxepoch=NUM_EPOCHS, optimizer=optimizer)
