@@ -137,8 +137,8 @@ if __name__ == "__main__":
         test_sample = next(iter(get_iterator(False)))
 
         ground_truth = (test_sample[0])
-        _, reconstructions = model(Variable(ground_truth).type(torch.FloatTensor).cuda())
-        reconstruction = reconstructions.cpu().view_as(ground_truth).data
+        # _, reconstructions = model(Variable(ground_truth).type(torch.FloatTensor).cuda())
+        # reconstruction = reconstructions.cpu().view_as(ground_truth).data
         ground_truth_logger.log(
             make_grid(ground_truth, nrow=int(BATCH_SIZE ** 0.5)))
         reconstruction_logger.log(
