@@ -15,7 +15,7 @@ from torch.optim import Adam
 from torchnet.engine import Engine
 from torchnet.logger import VisdomPlotLogger, VisdomLogger
 from torchvision.utils import make_grid
-from torchvision.datasets.svhn import SVHN
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 import torchnet as tnt
 
