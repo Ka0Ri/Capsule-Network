@@ -23,6 +23,28 @@ BATCH_SIZE = 100
 NUM_CLASSES = 10
 NUM_EPOCHS = 100
 
+class MyDataset(data.Dataset):
+    def __init__(self, data_files):
+        self.data_files = data_files
+        self.list_names = sorted(os.listdir(data_files))
+
+    def __len__(self):
+        'Denotes the total number of samples'
+        return len(self.list_names)
+
+    def __getitem__(self, index):
+        'Generates one sample of data'
+        # Select sample
+        ID = self.list_names[index]
+        # Load data and get label
+        X = cv2.imread(self.data_files + "/" + ID)
+        X = cv2.resize(X, (DATA_SIZE, DATA_SIZE))/255.0
+        X = np.transpose(X, (2, 1, 0))
+        X = np.array(X, dtype=np.float32)
+        y = int(ID[:2]) - 1
+       
+        return X, y
+    
 class Net(nn.Module):
     """
     Network description
@@ -74,15 +96,12 @@ if __name__ == "__main__":
 
     def get_iterator(mode):
         if mode is True:
-            dataset = SVHN(root='./data', download=True, split="train")
+            path = os.getcwd() + "/21_class_new/train_all_classes/"
         elif mode is False:
-            dataset = SVHN(root='./data', download=True, split="test")
-        data = dataset.data/255.0
-        labels = dataset.labels
-
-        tensor_dataset = tnt.dataset.TensorDataset([data, labels])
-
-        return tensor_dataset.parallel(batch_size=BATCH_SIZE, num_workers=4, shuffle=mode)
+            path = os.getcwd() + "/21_class_new/val_all_classes/"
+        set_data = MyDataset(path)
+        loader = data.DataLoader(set_data, batch_size = BATCH_SIZE, num_workers=8, shuffle=True)
+        return loader
 
     ##------------------log visualization------------------------##
     train_loss_logger = VisdomPlotLogger('line', opts={'title': 'Train Loss'})
