@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 
 ############EM Routing################
-def caps_em_routing_CPU(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
+def caps_em_routing_CPU(v, a_in, beta_u, beta_a, iters):
     """
     i in B: layer l, j in h*w*C: layer l + 1
     with each cell in h*w, compute on matrix B*C
@@ -57,35 +57,30 @@ def caps_em_routing_CPU(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
             # print("sigma_sq ", sigma_sq.shape)
 
     #to cuda
-    r_cuda = torch.from_numpy(r).float().cuda()
+    r_cuda = torch.from_numpy(r).float()
     r_sum_cuda = r_cuda.sum(dim=3, keepdim=True)
     coeff_cuda = r_cuda / (r_sum_cuda + eps)
     coeff_cuda = coeff_cuda.view(b, h, w, B, C, 1)
-    # print("coeff", torch.cuda.memory_allocated() / 1024**2)
     mu_cuda= torch.sum(coeff_cuda * v, dim=3, keepdim=True)
-    # print("mu", torch.cuda.memory_allocated() / 1024**2)
     sigma_sq_cuda = torch.sum(coeff_cuda * (v - mu_cuda)**2, dim=3, keepdim=True)
-    # print("sigma_sq", torch.cuda.memory_allocated() / 1024**2)
     r_sum_cuda = r_sum_cuda.view(b, h, w, 1, C, 1)
     cost_h = (beta_u + torch.log(sigma_sq_cuda.sqrt())) * r_sum_cuda
-    # print("cost_h ", torch.cuda.memory_allocated() / 1024**2)
     a_out = torch.sigmoid(_lambda*(beta_a - cost_h.sum(dim=5, keepdim=True)))
-    # print("a_out ", torch.cuda.memory_allocated() / 1024**2)
 
     mu_cuda = mu_cuda.view(b, h, w, C, psize)
     a_out =  a_out.view(b, h, w, C, 1)
     return mu_cuda, a_out
 
-def caps_em_routing(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
+def caps_em_routing(v, a_in, beta_u, beta_a, iters):
     """
     i in B: layer l, j in h*w*C: layer l + 1
     with each cell in h*w, compute on matrix B*C
     Input:
         v:         (b, h, w, B, C, P*P)
-        a_in:      (b, h, w, B, C, 1)
+        a_in:      (b, h, w, B, 1)
     Output:
-        mu:        (b, h, w, B, C, P*P)
-        a_out:     (b, h, w, B, C, 1)
+        mu:        (b, h, w, C, P*P)
+        a_out:     (b, h, w, C, 1)
         'b = batch_size'
         'h = height'
         'w = width'
@@ -93,6 +88,9 @@ def caps_em_routing(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
         'B = K*K*B'
         'psize = P*P'
     """
+    eps = 1e-06
+    _lambda = 1e-03
+    ln_2pi = torch.cuda.FloatTensor(1).fill_(np.log(2*np.pi))
     b, h, w, B, C, psize = v.shape
 
     for iter_ in range(iters):
@@ -106,15 +104,17 @@ def caps_em_routing(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
             ln_ap = ln_pjh.sum(dim=5) + torch.log(a_out.view(b, h, w, 1, C))
             # print("ln_ap ", torch.cuda.memory_allocated() / 1024**2)
             r = F.softmax(ln_ap, dim=4)
+           
             # print("r ", torch.cuda.memory_allocated() / 1024**2)
         #M step
         r_sum = r.sum(dim=3, keepdim=True)
         coeff = r / (r_sum + eps)
+        
         coeff = coeff.view(b, h, w, B, C, 1)
         # print("coeff", torch.cuda.memory_allocated() / 1024**2)
         mu = torch.sum(coeff * v, dim=3, keepdim=True)
         # print("mu", torch.cuda.memory_allocated() / 1024**2)
-        sigma_sq = torch.sum(coeff * (v - mu)**2, dim=3, keepdim=True)
+        sigma_sq = torch.sum(coeff * (v - mu)**2, dim=3, keepdim=True) + eps
         # print("sigma_sq", torch.cuda.memory_allocated() / 1024**2)
         r_sum = r_sum.view(b, h, w, 1, C, 1)
         cost_h = (beta_u + torch.log(sigma_sq.sqrt())) * r_sum
@@ -124,6 +124,7 @@ def caps_em_routing(v, a_in, beta_u, beta_a, eps, iters, _lambda, ln_2pi):
         
     mu = mu.view(b, h, w, C, psize)
     a_out = a_out.view(b, h, w, C, 1)
+  
     return mu, a_out
 ############EM Routing################
 
@@ -178,8 +179,7 @@ class ConvCaps(nn.Module):
         h', w' is computed the same way as convolution layer
         parameter size is: K*K*B*C*P*P + B*P*P
     """
-    def __init__(self, B=32, C=32, K=3, P=4, stride=2, iters=3,
-                 coor_add=False, w_shared=False):
+    def __init__(self, B=32, C=32, K=3, P=4, stride=2, iters=3, coor_add=False, w_shared=False):
         super(ConvCaps, self).__init__()
         self.B = B
         self.C = C
@@ -190,10 +190,6 @@ class ConvCaps(nn.Module):
         self.iters = iters
         self.coor_add = coor_add
         self.w_shared = w_shared
-        # constant
-        self.eps = 1e-8
-        self._lambda = 1e-03
-        self.ln_2pi = torch.cuda.FloatTensor(1).fill_(np.log(2*np.pi))
         # params
         # beta_u and beta_a are per capsule type,
         self.beta_u = nn.Parameter(torch.zeros(C,1))
@@ -219,14 +215,11 @@ class ConvCaps(nn.Module):
     def voting(self, x, Weights, C, P):
         """
         Preparing capsule data point for EM routing, 
-        Num Capsules at layer l: KxKxB
-        Num Capsules at layer l + 1: H*W*C
         For conv_caps:
             Input:     (b, h, w, K*K*B, P*P)
             Output:    (b, h, w, K*K*B, C, P*P)
         """
-        b, h, w, B, psize = x.shape
-        #b: fix dimmension, B, random dimmension
+        b, h, w, B, psize = x.shape #b: fix dimmension, B, random dimmension
         x = x.view(b, h, w, B, 1, P, P)
         v = (x @ Weights) #(b*H*W)*(K*K*B)*C*P*P
         v = v.view(b, h, w, B, C, P*P)
@@ -267,10 +260,82 @@ class ConvCaps(nn.Module):
             if self.coor_add:
                 v = self.add_coord(v)
         # em_routing
-        p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, 
-                                        self.eps, self.iters, self._lambda, self.ln_2pi)
+        p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
         # print("EM ", torch.cuda.memory_allocated() / 1024**2)
         return p_out, a_out
+
+class DepthWiseConvCaps(nn.Module):
+    """
+    Args:
+        B: input number of types of capsules
+        K: kernel size of convolution
+        P: size of pose matrix is P*P
+        stride: stride of convolution
+        iters: number of EM iterations
+    Shape:
+        input:  (*, B, h,  w, (P*P+1))
+        output: (*, B, h', w', (P*P+1))
+        h', w' is computed the same way as convolution layer
+    """
+    def __init__(self, B=32, K=3, P=4, stride=2, iters=3):
+        super(DepthWiseConvCaps, self).__init__()
+        self.B = B
+        self.K = K
+        self.P = P
+        self.psize = P*P
+        self.stride = stride
+        self.iters = iters
+        # params
+        # beta_u and beta_a are per capsule type,
+        self.beta_u = nn.Parameter(torch.zeros(B,1))
+        self.beta_a = nn.Parameter(torch.zeros(B,1))
+        # the filter size is P*P*k*k
+        self.weights = nn.Parameter(torch.randn(1, 1, 1, K*K, B, P, P))
+
+    def pactching(self, x, K, stride):
+        """
+        Preparing windows for computing convolution
+        Shape:
+            Input:     (b, H, W, B, -1)
+            Output:    (b, H', W', K, K, B, -1)
+        """
+        b, h, w, B, psize = x.shape
+        oh = ow = int((h - K + 1) / stride)
+        idxs = [[(h_idx + k_idx) for k_idx in range(0, K)] for h_idx in range(0, h - K + 1, stride)]
+        x = x[:, idxs, :, :, :]
+        x = x[:, :, :, idxs, :, :]
+        x = x.permute(0, 1, 3, 2, 4, 5, 6).contiguous()
+        return x, oh, ow
+
+    def voting(self, x, Weights, P):
+        """
+        Preparing capsule data point for EM routing, 
+        For conv_caps:
+            Input:     (b, h, w, K*K, B, P*P)
+            Output:    (b, h, w, K*K, B, P*P)
+        """
+        b, h, w, K, B, psize = x.shape
+        x = x.view(b, h, w, K, B, P, P)
+        v = (x @ Weights)
+        v = v.view(b, h, w, K, B, psize)
+        return v
+
+    def forward(self, x, a):
+        b, h, w, B, psize = x.shape
+        # patching
+        p_in, oh, ow = self.pactching(x, self.K, self.stride)
+        a_in, _, _ = self.pactching(a, self.K, self.stride)
+        p_in = p_in.view(b, oh, ow, self.K*self.K, self.B, self.psize)
+        # voting
+        v = self.voting(p_in, self.weights, self.P)
+        # print("voting ", torch.cuda.memory_allocated() / 1024**2)
+        a_in = a_in.view(b, oh, ow, self.K*self.K, self.B)
+
+        p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
+        # print("EM ", torch.cuda.memory_allocated() / 1024**2)
+       
+        return p_out, a_out
+
 
 class FCCaps(nn.Module):
     """
@@ -288,16 +353,12 @@ class FCCaps(nn.Module):
         parameter size is: B*C*P*P + B*P*P
     """
     def __init__(self, B=32, C=32, P=4, iters=3):
-        super(ConvCaps, self).__init__()
+        super(FCCaps, self).__init__()
         self.B = B
         self.C = C
         self.P = P
         self.psize = P*P
         self.iters = iters
-        # constant
-        self.eps = 1e-8
-        self._lambda = 1e-03
-        self.ln_2pi = torch.cuda.FloatTensor(1).fill_(np.log(2*np.pi))
         # params
         # beta_u and beta_a are per capsule type,
         self.beta_u = nn.Parameter(torch.zeros(C))
@@ -330,8 +391,7 @@ class FCCaps(nn.Module):
         v = v.view(b, 1, 1, self.B, self.C, self.psize)
         a_in = a.view(b, 1, 1, self.B, 1)
 
-        p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, 
-                                        self.eps, self.iters, self._lambda, self.ln_2pi)
+        p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
         p_out = p_out.view(b, self.C, self.psize)
         a_out = a_out.view(b, self.C, 1)
 
