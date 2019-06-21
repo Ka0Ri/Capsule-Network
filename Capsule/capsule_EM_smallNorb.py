@@ -7,42 +7,49 @@ import sys
 sys.setrecursionlimit(1500)
 
 import torch
-
+import cv2
 from torch import nn
 import numpy as np
 import torch.nn.functional as F
 from torch.nn.modules.loss import _Loss
 from torch.autograd import Variable
-from torch.optim import Adam
+from torch.optim import Adam, Adagrad
 from torchnet.engine import Engine
 from torchnet.logger import VisdomPlotLogger, VisdomLogger
 from torchvision.utils import make_grid
-from torchvision.datasets.mnist import MNIST
 from tqdm import tqdm
 import torchnet as tnt
 from torchsummary import summary
+from torch.utils.data import Dataset, DataLoader
+import h5py
+
+from CapsuleNet import PrimaryCaps, ConvCaps, DepthWiseConvCaps
+BATCH_SIZE = 8
+NUM_CLASSES = 10
+NUM_EPOCHS = 250
+
 import os
 os.environ['CUDA_VISIBLE_DEVICES']='1'
-
-from CapsuleNet import PrimaryCaps, ConvCaps, PoolingCaps
-BATCH_SIZE = 50
-NUM_CLASSES = 10
-NUM_EPOCHS = 50
-
-def augmentation(x, max_shift=2):
-    _, _, height, width = x.size()
-    h_shift, w_shift = np.random.randint(-max_shift, max_shift + 1, size=2)
-    source_height_slice = slice(max(0, h_shift), h_shift + height)
-    source_width_slice = slice(max(0, w_shift), w_shift + width)
-    target_height_slice = slice(max(0, -h_shift), -h_shift + height)
-    target_width_slice = slice(max(0, -w_shift), -w_shift + width)
-    shifted_image = torch.zeros(*x.size())
-    shifted_image[:, :, source_height_slice, source_width_slice] = x[:, :, target_height_slice, target_width_slice]
-    
-    return shifted_image.float()
+path = os.getcwd()
 
 
-class CapsNet(nn.Module):
+class SmallNorb(Dataset):
+    def __init__(self, name):
+        hf = h5py.File(name, 'r')
+        self.input_images = np.array(hf.get('data')).reshape((-1, 1, 96, 96))/255.0
+        self.target_labels = np.array(hf.get('labels'))
+        hf.close()
+
+    def __len__(self):
+        return (self.input_images.shape[0])
+
+    def __getitem__(self, idx):
+        images = self.input_images[idx]
+        labels = self.target_labels[idx]
+        return images, labels
+
+
+class MobileCapsule(nn.Module):
     """
     Args:
         A: output channels of normal conv
@@ -55,17 +62,20 @@ class CapsNet(nn.Module):
         iters: number of EM iterations
         ...
     """
-    def __init__(self, A=64, B=32, C=32, D=32, E=10, K=3, P=4, iters=3):
-        super(CapsNet, self).__init__()
+    def __init__(self, A=64, B=8, C=16, D=16, E=10, K=3, P=4, iters=3):
+        super(MobileCapsule, self).__init__()
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=A,
-                               kernel_size=5, stride=2, padding=2)
-        self.bn1 = nn.BatchNorm2d(num_features=A, eps=0.001,
-                                 momentum=0.1, affine=True)
+                               kernel_size=5, stride=2, padding=0)
+        # self.bn1 = nn.BatchNorm2d(num_features=A, eps=0.001,
+        #                          momentum=0.1, affine=True)
         self.relu1 = nn.ReLU(inplace=False)
         self.primary_caps = PrimaryCaps(A, B, 1, P, stride=1)
-        self.pool1 = PoolingCaps(K, P, stride=2, mode="max")
-        self.conv_caps1 = ConvCaps(B, C, K=1, P=4, stride=1, iters=iters)
-        self.conv_caps2 = ConvCaps(C, D, K, P, stride=1, iters=iters)
+        self.depthwise1 = DepthWiseConvCaps(B, K=7, stride=2, iters=iters)
+        self.conv_caps1 = ConvCaps(B, C, K=1, P=P, stride=1, iters=iters)
+        # self.conv_caps1 = ConvCaps(B, C, K=3, P=P, stride=2, iters=iters)
+        self.depthwise2 = DepthWiseConvCaps(C, K=5, stride=2, iters=iters)
+        self.conv_caps2 = ConvCaps(C, D, K=1, P=P, stride=1, iters=iters)
+        # self.conv_caps2 = ConvCaps(C, D, K, P, stride=1, iters=iters)
         self.class_caps = ConvCaps(D, E, 1, P, stride=1, iters=iters, coor_add=True, w_shared=True)
 
 
@@ -73,14 +83,19 @@ class CapsNet(nn.Module):
         conv1 = self.conv1(x)
         relu1 = self.relu1(conv1)
         pose, a = self.primary_caps(relu1)
-        pose_pool, a_pool = self.pool1(pose, a)
-        pose1, a1 = self.conv_caps1(pose_pool, a_pool)
-        pose2, a2 = self.conv_caps2(pose1, a1)
+        print(pose.shape)
+        pose_depthwise1, a_depthwise1 =  self.depthwise1(pose, a)
+        pose1, a1 = self.conv_caps1(pose_depthwise1, a_depthwise1)
+        # pose1, a1 = self.conv_caps1(pose, a)
+        pose_depthwise2, a_depthwise2 =  self.depthwise2(pose1, a1)
+        pose2, a2 = self.conv_caps2(pose_depthwise2, a_depthwise2)
+        # pose2, a2 = self.conv_caps2(pose1, a1)
         pose_class, a_class = self.class_caps(pose2, a2)
         a_class = a_class.squeeze()
         pose_class = pose_class.squeeze()
    
-        return a_class
+        reconstructions = x.view(x.size(0), -1)
+        return a_class, reconstructions
 
 
 class SpreadLoss(_Loss):
@@ -105,34 +120,38 @@ class SpreadLoss(_Loss):
         loss = loss**2
         loss = loss.sum() / b - margin**2#minus included margin
 
-
         return loss
 
 
 if __name__ == "__main__":
     r = 0
-    model = CapsNet(E=NUM_CLASSES)
+    model = MobileCapsule(E=NUM_CLASSES)
     model.cuda()
     capsule_loss = SpreadLoss(num_class=NUM_CLASSES)
-    summary(model, input_size=(1, 28, 28))
+    summary(model, input_size=(1, 96, 96))
+
     print("# parameters:", sum(param.numel() for param in model.parameters()))
 
     ##------------------init------------------------##
-    optimizer = Adam(model.parameters())
+    optimizer = Adagrad(model.parameters())
     engine = Engine()#training loop
+    
+    dataset_train = SmallNorb(path + "/data/smallNorb/smallNorb_train.h5")
+    dataset_test = SmallNorb(path + "/data/smallNorb/smallNorb_test.h5")
+    def get_iterator(mode):
+        if mode is True:
+            dataset = dataset_train
+        elif mode is False:
+            dataset = dataset_train
+        loader = DataLoader(dataset, batch_size = BATCH_SIZE, num_workers=8, shuffle=mode)
+
+        return loader
+
+    ##------------------log visualization------------------------##
     meter_loss = tnt.meter.AverageValueMeter()
     meter_accuracy = tnt.meter.ClassErrorMeter(accuracy=True)
     confusion_meter = tnt.meter.ConfusionMeter(NUM_CLASSES, normalized=True)
 
-    def get_iterator(mode):
-        dataset = MNIST(root='./data', download=True, train=mode)
-        data = getattr(dataset, 'train_data' if mode else 'test_data')#get value of attribute by key
-        labels = getattr(dataset, 'train_labels' if mode else 'test_labels')
-        tensor_dataset = tnt.dataset.TensorDataset([data, labels])
-
-        return tensor_dataset.parallel(batch_size=BATCH_SIZE, num_workers=4, shuffle=mode)
-
-    ##------------------log visualization------------------------##
     train_loss_logger = VisdomPlotLogger('line', opts={'title': 'Train Loss'})
     train_error_logger = VisdomPlotLogger('line', opts={'title': 'Train Accuracy'})
     test_loss_logger = VisdomPlotLogger('line', opts={'title': 'Test Loss'})
@@ -184,9 +203,13 @@ if __name__ == "__main__":
         test_sample = next(iter(get_iterator(False)))
 
         ground_truth = (test_sample[0].unsqueeze(1).float() / 255.0)
+        # _, reconstructions = model(Variable(ground_truth).cuda())
+        # reconstruction = reconstructions.cpu().view_as(ground_truth).data
         ground_truth_logger.log(
             make_grid(ground_truth, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy())
-       
+        # reconstruction_logger.log(
+        #     make_grid(reconstruction, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy())
+
         #increase r each epoch
         global r
         r = r + 1./NUM_EPOCHS
@@ -202,19 +225,19 @@ if __name__ == "__main__":
     ##------------------main flow------------------------##
     def processor(sample):
         data, labels, training = sample
-        data = augmentation(data.unsqueeze(1).float() / 255.0)
-        labels = torch.LongTensor(labels)
+        labels = torch.LongTensor(labels.long())
         # labels = torch.eye(NUM_CLASSES).index_select(dim=0, index=labels)
-        data = Variable(data).cuda()
+        data = Variable(data.float()).cuda()
         labels = Variable(labels).cuda()
         
         if training:
-            classes = model(data, labels)
+            classes, reconstructions = model(data, labels)
         else:
-            classes = model(data)
+            classes, reconstructions = model(data)
         loss = capsule_loss(classes, labels, 1)
 
         prob = F.softmax(classes, dim = 1)
+           
         return loss, prob
 
 

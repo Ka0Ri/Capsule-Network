@@ -23,7 +23,7 @@ import torchnet as tnt
 from torchsummary import summary
 
 from CapsuleNet import PrimaryCaps, ConvCaps, DepthWiseConvCaps
-BATCH_SIZE = 100
+BATCH_SIZE = 16
 NUM_CLASSES = 10
 NUM_EPOCHS = 250
 
@@ -65,10 +65,10 @@ class MobileCapsule(nn.Module):
         #                          momentum=0.1, affine=True)
         self.relu1 = nn.ReLU(inplace=False)
         self.primary_caps = PrimaryCaps(A, B, 1, P, stride=1)
-        self.depthwise1 = DepthWiseConvCaps(B, K=5, stride=2, iters=iters)
+        self.depthwise1 = DepthWiseConvCaps(B, K=5, stride=1, iters=iters)
         self.conv_caps1 = ConvCaps(B, C, K=1, P=P, stride=1, iters=iters)
         # self.conv_caps1 = ConvCaps(B, C, K=3, P=P, stride=2, iters=iters)
-        self.depthwise2 = DepthWiseConvCaps(C, K=5, stride=2, iters=iters)
+        self.depthwise2 = DepthWiseConvCaps(C, K=5, stride=1, iters=iters)
         self.conv_caps2 = ConvCaps(C, D, K=1, P=P, stride=1, iters=iters)
         # self.conv_caps2 = ConvCaps(C, D, K, P, stride=1, iters=iters)
         self.class_caps = ConvCaps(D, E, 1, P, stride=1, iters=iters, coor_add=True, w_shared=True)
@@ -81,10 +81,10 @@ class MobileCapsule(nn.Module):
         pose_depthwise1, a_depthwise1 =  self.depthwise1(pose, a)
         pose1, a1 = self.conv_caps1(pose_depthwise1, a_depthwise1)
         # pose1, a1 = self.conv_caps1(pose, a)
-        pose_depthwise2, a_depthwise2 =  self.depthwise2(pose, a)
+        pose_depthwise2, a_depthwise2 =  self.depthwise2(pose1, a1)
         pose2, a2 = self.conv_caps2(pose_depthwise2, a_depthwise2)
         # pose2, a2 = self.conv_caps2(pose1, a1)
-        pose_class, a_class = self.class_caps(pose2, a2)
+        pose_class, a_class = self.class_caps(pose1, a1)
         a_class = a_class.squeeze()
         pose_class = pose_class.squeeze()
    
