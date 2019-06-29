@@ -55,7 +55,7 @@ class CapsNet(nn.Module):
         iters: number of EM iterations
         ...
     """
-    def __init__(self, A=64, B=32, C=32, D=32, E=10, K=3, P=4, iters=3):
+    def __init__(self, A=32, B=16, C=32, D=32, E=10, K=3, P=4, iters=2):
         super(CapsNet, self).__init__()
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=A,
                                kernel_size=5, stride=2, padding=2)
@@ -63,18 +63,16 @@ class CapsNet(nn.Module):
                                  momentum=0.1, affine=True)
         self.relu1 = nn.ReLU(inplace=False)
         self.primary_caps = PrimaryCaps(A, B, 1, P, stride=1)
-        self.pool1 = PoolingCaps(K, P, stride=2, mode="max")
-        self.conv_caps1 = ConvCaps(B, C, K=1, P=4, stride=1, iters=iters)
-        self.conv_caps2 = ConvCaps(C, D, K, P, stride=1, iters=iters)
-        self.class_caps = ConvCaps(D, E, 1, P, stride=1, iters=iters, coor_add=True, w_shared=True)
+        self.conv_caps1 = ConvCaps(B, C, K=3, P=4, stride=2, iters=iters, routing_mode="MS")
+        self.conv_caps2 = ConvCaps(C, D, K=3, P=4, stride=1, iters=iters, routing_mode="MS")
+        self.class_caps = ConvCaps(D, E, K=1, P=4, stride=1, iters=iters, coor_add=True, w_shared=True, routing_mode="MS")
 
 
     def forward(self, x, y=None):
         conv1 = self.conv1(x)
         relu1 = self.relu1(conv1)
         pose, a = self.primary_caps(relu1)
-        pose_pool, a_pool = self.pool1(pose, a)
-        pose1, a1 = self.conv_caps1(pose_pool, a_pool)
+        pose1, a1 = self.conv_caps1(pose, a)
         pose2, a2 = self.conv_caps2(pose1, a1)
         pose_class, a_class = self.class_caps(pose2, a2)
         a_class = a_class.squeeze()

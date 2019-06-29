@@ -36,8 +36,8 @@ path = os.getcwd()
 class SmallNorb(Dataset):
     def __init__(self, name):
         hf = h5py.File(name, 'r')
-        self.input_images = (np.array(hf.get('data'))[:100]).reshape((-1, 1, 96, 96))/255.0
-        self.target_labels = np.array(hf.get('labels')).astype(np.long)[:100]
+        self.input_images = (np.array(hf.get('data'))).reshape((-1, 1, 96, 96))/255.0
+        self.target_labels = np.array(hf.get('labels')).astype(np.long)
         hf.close()
 
     def __len__(self):
@@ -200,12 +200,12 @@ if __name__ == "__main__":
         # Reconstruction visualization.
         test_sample = next(iter(get_iterator(False)))
 
-        ground_truth = (test_sample[0].unsqueeze(1).float() / 255.0)
+        ground_truth = (test_sample[0])
         print(ground_truth.shape)
         # _, reconstructions = model(Variable(ground_truth).cuda())
         # reconstruction = reconstructions.cpu().view_as(ground_truth).data
         ground_truth_logger.log(
-            make_grid(ground_truth, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy())
+            make_grid(ground_truth, nrow=int(BATCH_SIZE ** 0.5)))
         # reconstruction_logger.log(
         #     make_grid(reconstruction, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy())
 

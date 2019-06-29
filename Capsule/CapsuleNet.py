@@ -56,6 +56,95 @@ def caps_em_routing(v, a_in, beta_u, beta_a, iters):
     a_out = a_out.view(b, h, w, C, 1)
   
     return mu, a_out
+
+def caps_EMsim_routing(v, a_in, beta_u, iters):
+    """
+    i in B: layer l, j in h*w*C: layer l + 1
+    with each cell in h*w, compute on matrix B*C
+    Input:
+        v:         (b, h, w, B, C, P*P)
+        a_in:      (b, h, w, B, 1)
+    Output:
+        mu:        (b, h, w, C, P*P)
+        a_out:     (b, h, w, C, 1)
+        'b = batch_size'
+        'h = height'
+        'w = width'
+        'C = depth'
+        'B = K*K*B'
+        'psize = P*P'
+    """
+    eps = 1e-06
+    b, h, w, B, C, psize = v.shape
+
+    r = torch.cuda.FloatTensor(b, h, w, B, C, 1).fill_(1./C)
+    a_in = a_in.view(b, h, w, B, 1, 1)
+    for iter_ in range(iters):
+        r_sum = r.sum(dim=3, keepdim=True)
+        nr = r / (r_sum + eps)
+
+        r_ = nr * a_in
+        r_sum = torch.sum(r_, dim=3, keepdim=True)
+        mu = torch.sum(r_ * v, dim=3, keepdim=True)/(r_sum + eps)
+      
+        r_d = torch.sum(torch.sum(nr, dim=3, keepdim=True), dim=4, keepdim=True)
+        pi = torch.sum(nr, dim=3, keepdim=True)/(r_d + eps)
+        d = torch.sum(torch.abs(v - mu), dim=5, keepdim=True)
+        r = pi*torch.exp(-d/2)
+        
+    d =  torch.sum(torch.abs(v - beta_u*mu), dim=5, keepdim=True)
+    a_out = torch.sum(r_*torch.exp(-d/2), dim=3, keepdim=True)
+    a_out = F.softmax(a_out, dim=4)
+    # a_out = torch.sigmoid(a_out)
+
+    mu = mu.view(b, h, w, C, psize)
+    a_out = a_out.view(b, h, w, C, 1)
+  
+    return mu, a_out
+
+def caps_MS_routing(v, a_in, beta_u, iters):
+    """
+    i in B: layer l, j in h*w*C: layer l + 1
+    with each cell in h*w, compute on matrix B*C
+    Input:
+        v:         (b, h, w, B, C, P*P)
+        a_in:      (b, h, w, B, 1)
+    Output:
+        mu:        (b, h, w, C, P*P)
+        a_out:     (b, h, w, C, 1)
+        'b = batch_size'
+        'h = height'
+        'w = width'
+        'C = depth'
+        'B = K*K*B'
+        'psize = P*P'
+    """
+    eps = 1e-06
+    b, h, w, B, C, psize = v.shape
+
+    r = torch.cuda.FloatTensor(b, h, w, B, C, 1).fill_(1./C)
+    mu = torch.mean(v, dim=3, keepdim=True)
+    a_in = a_in.view(b, h, w, B, 1, 1)
+    for iter_ in range(iters):
+        r_sum = r.sum(dim=3, keepdim=True)
+        nr = r / (r_sum + eps)
+        
+        k = torch.exp(-torch.sum(torch.abs(v - mu), dim=5, keepdim=True)/2)
+        r_ = -1/2* nr * a_in * k
+        r_sum = torch.sum(r_, dim=3, keepdim=True)
+        mu = torch.sum(r_ * v, dim=3, keepdim=True)/(r_sum + eps)
+      
+        r = r + a_in*k
+
+    d =  torch.sum(torch.abs(v - beta_u*mu), dim=5, keepdim=True) 
+    a_out = torch.sum(nr*a_in*torch.exp(-d/2), dim=3, keepdim=True)
+    # a_out = F.softmax(a_out, dim=4)
+    a_out = torch.sigmoid(a_out)
+
+    mu = mu.view(b, h, w, C, psize)
+    a_out = a_out.view(b, h, w, C, 1)
+  
+    return mu, a_out
 ############EM Routing################
 
 
@@ -166,7 +255,7 @@ class ConvCaps(nn.Module):
         h', w' is computed the same way as convolution layer
         parameter size is: K*K*B*C*P*P + B*P*P
     """
-    def __init__(self, B=32, C=32, K=3, P=4, stride=2, iters=3, coor_add=False, w_shared=False):
+    def __init__(self, B=32, C=32, K=3, P=4, stride=2, iters=3, coor_add=False, w_shared=False, routing_mode="EM"):
         super(ConvCaps, self).__init__()
         self.B = B
         self.C = C
@@ -177,6 +266,7 @@ class ConvCaps(nn.Module):
         self.iters = iters
         self.coor_add = coor_add
         self.w_shared = w_shared
+        self.routing_mode = routing_mode
         # params
         # beta_u and beta_a are per capsule type,
         self.beta_u = nn.Parameter(torch.zeros(C,1))
@@ -250,7 +340,12 @@ class ConvCaps(nn.Module):
             if self.coor_add:
                 v = self.add_coord(v)
         # em_routing
-        p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
+        if(self.routing_mode == "EM"):
+            p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
+        elif(self.routing_mode == "EMsim"):
+            p_out, a_out = caps_EMsim_routing(v, a_in, self.beta_u, self.iters)
+        elif(self.routing_mode == "MS"):
+            p_out, a_out = caps_MS_routing(v, a_in, self.beta_u, self.iters)
         # print("EM ", torch.cuda.memory_allocated() / 1024**2)
         return p_out, a_out
 
@@ -267,7 +362,7 @@ class DepthWiseConvCaps(nn.Module):
         output: (*, h',  w', B, (P*P+1)) & (*, h',  w', B, 1)
         h', w' is computed the same way as convolution layer
     """
-    def __init__(self, B=32, K=3, P=4, stride=2, iters=3):
+    def __init__(self, B=32, K=3, P=4, stride=2, iters=3, routing_mode = "EM"):
         super(DepthWiseConvCaps, self).__init__()
         self.B = B
         self.K = K
@@ -275,6 +370,7 @@ class DepthWiseConvCaps(nn.Module):
         self.psize = P*P
         self.stride = stride
         self.iters = iters
+        self.routing_mode = routing_mode
         # params
         # beta_u and beta_a are per capsule type,
         self.beta_u = nn.Parameter(torch.zeros(B,1))
@@ -324,7 +420,12 @@ class DepthWiseConvCaps(nn.Module):
         # print("voting ", torch.cuda.memory_allocated() / 1024**2)
         a_in = a_in.view(b, oh, ow, self.K*self.K, self.B)
 
-        p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
+        if(self.routing_mode == "EM"):
+            p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
+        elif(self.routing_mode == "EMsim"):
+            p_out, a_out = caps_EMsim_routing(v, a_in, self.beta_u, self.iters)
+        elif(self.routing_mode == "MS"):
+            p_out, a_out = caps_MS_routing(v, a_in, self.beta_u, self.iters)
         # print("EM ", torch.cuda.memory_allocated() / 1024**2)
        
         return p_out, a_out
@@ -343,13 +444,14 @@ class FCCaps(nn.Module):
         h', w' is computed the same way as convolution layer
         parameter size is: B*C*P*P + B*P*P
     """
-    def __init__(self, B=32, C=32, P=4, iters=3):
+    def __init__(self, B=32, C=32, P=4, iters=3, routing_mode="EM"):
         super(FCCaps, self).__init__()
         self.B = B
         self.C = C
         self.P = P
         self.psize = P*P
         self.iters = iters
+        self.routing_mode = routing_mode
         # params
         # beta_u and beta_a are per capsule type,
         self.beta_u = nn.Parameter(torch.zeros(C))
@@ -383,7 +485,12 @@ class FCCaps(nn.Module):
         v = v.view(b, 1, 1, self.B, self.C, self.psize)
         a_in = a.view(b, 1, 1, self.B, 1)
 
-        p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
+        if(self.routing_mode == "EM"):
+            p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
+        elif(self.routing_mode == "EMsim"):
+            p_out, a_out = caps_EMsim_routing(v, a_in, self.beta_u, self.iters)
+        elif(self.routing_mode == "MS"):
+            p_out, a_out = caps_MS_routing(v, a_in, self.beta_u, self.iters)
         p_out = p_out.view(b, self.C, self.psize)
         a_out = a_out.view(b, self.C, 1)
 

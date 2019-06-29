@@ -23,9 +23,9 @@ from torchsummary import summary
 from torch.utils.data import Dataset, DataLoader
 import h5py
 
-from CapsuleNet import PrimaryCaps, ConvCaps, DepthWiseConvCaps
-BATCH_SIZE = 8
-NUM_CLASSES = 10
+from CapsuleNet import PrimaryCaps, ConvCaps, PoolingCaps
+BATCH_SIZE = 20
+NUM_CLASSES = 5
 NUM_EPOCHS = 250
 
 import os
@@ -36,8 +36,10 @@ path = os.getcwd()
 class SmallNorb(Dataset):
     def __init__(self, name):
         hf = h5py.File(name, 'r')
-        self.input_images = np.array(hf.get('data')).reshape((-1, 1, 96, 96))/255.0
-        self.target_labels = np.array(hf.get('labels'))
+        images = np.array(hf.get('data'))
+        b, h, w = images.shape
+        self.input_images = images.reshape((-1, 1,h, w))/255.0
+        self.target_labels = np.array(hf.get('labels')).astype(np.long)
         hf.close()
 
     def __len__(self):
@@ -49,7 +51,7 @@ class SmallNorb(Dataset):
         return images, labels
 
 
-class MobileCapsule(nn.Module):
+class CapsNet(nn.Module):
     """
     Args:
         A: output channels of normal conv
@@ -62,40 +64,32 @@ class MobileCapsule(nn.Module):
         iters: number of EM iterations
         ...
     """
-    def __init__(self, A=64, B=8, C=16, D=16, E=10, K=3, P=4, iters=3):
-        super(MobileCapsule, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=A,
-                               kernel_size=5, stride=2, padding=0)
-        # self.bn1 = nn.BatchNorm2d(num_features=A, eps=0.001,
-        #                          momentum=0.1, affine=True)
+    def __init__(self, E=NUM_CLASSES, K=3, P=4, iters=2):
+        super(CapsNet, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=64,
+                               kernel_size=5, stride=2, padding=2)
         self.relu1 = nn.ReLU(inplace=False)
-        self.primary_caps = PrimaryCaps(A, B, 1, P, stride=1)
-        self.depthwise1 = DepthWiseConvCaps(B, K=7, stride=2, iters=iters)
-        self.conv_caps1 = ConvCaps(B, C, K=1, P=P, stride=1, iters=iters)
-        # self.conv_caps1 = ConvCaps(B, C, K=3, P=P, stride=2, iters=iters)
-        self.depthwise2 = DepthWiseConvCaps(C, K=5, stride=2, iters=iters)
-        self.conv_caps2 = ConvCaps(C, D, K=1, P=P, stride=1, iters=iters)
-        # self.conv_caps2 = ConvCaps(C, D, K, P, stride=1, iters=iters)
-        self.class_caps = ConvCaps(D, E, 1, P, stride=1, iters=iters, coor_add=True, w_shared=True)
+        self.primary_caps = PrimaryCaps(A=64, B=4, K=1, P=4, stride=1)
+        self.conv_caps1 = ConvCaps(B=4, C=8, K=3, P=4, stride=2, iters=iters, routing_mode="MS")
+        self.conv_caps2 = ConvCaps(B=8, C=8, K=3, P=4, stride=2, iters=iters, routing_mode="MS")
+        self.conv_caps3 = ConvCaps(B=8, C=16, K=3, P=4, stride=2, iters=iters, routing_mode="MS")
+        self.conv_caps4 = ConvCaps(B=16, C=32, K=3, P=4, stride=2, iters=iters, routing_mode="MS")
+        self.class_caps = ConvCaps(B=32, C=E, K=1, P=4, stride=1, iters=iters, coor_add=True, w_shared=True, routing_mode="EM")
 
 
     def forward(self, x, y=None):
         conv1 = self.conv1(x)
         relu1 = self.relu1(conv1)
         pose, a = self.primary_caps(relu1)
-        print(pose.shape)
-        pose_depthwise1, a_depthwise1 =  self.depthwise1(pose, a)
-        pose1, a1 = self.conv_caps1(pose_depthwise1, a_depthwise1)
-        # pose1, a1 = self.conv_caps1(pose, a)
-        pose_depthwise2, a_depthwise2 =  self.depthwise2(pose1, a1)
-        pose2, a2 = self.conv_caps2(pose_depthwise2, a_depthwise2)
-        # pose2, a2 = self.conv_caps2(pose1, a1)
-        pose_class, a_class = self.class_caps(pose2, a2)
+        pose1, a1 = self.conv_caps1(pose, a)
+        pose2, a2 = self.conv_caps2(pose1, a1)
+        pose3, a3 = self.conv_caps3(pose2, a2)
+        pose4, a4 = self.conv_caps4(pose3, a3)
+        pose_class, a_class = self.class_caps(pose4, a4)
         a_class = a_class.squeeze()
         pose_class = pose_class.squeeze()
    
-        reconstructions = x.view(x.size(0), -1)
-        return a_class, reconstructions
+        return a_class
 
 
 class SpreadLoss(_Loss):
@@ -125,10 +119,10 @@ class SpreadLoss(_Loss):
 
 if __name__ == "__main__":
     r = 0
-    model = MobileCapsule(E=NUM_CLASSES)
+    model = CapsNet(E=NUM_CLASSES)
     model.cuda()
     capsule_loss = SpreadLoss(num_class=NUM_CLASSES)
-    summary(model, input_size=(1, 96, 96))
+    summary(model, input_size=(1, 92, 92))
 
     print("# parameters:", sum(param.numel() for param in model.parameters()))
 
@@ -137,7 +131,7 @@ if __name__ == "__main__":
     engine = Engine()#training loop
     
     dataset_train = SmallNorb(path + "/data/smallNorb/smallNorb_train.h5")
-    dataset_test = SmallNorb(path + "/data/smallNorb/smallNorb_test.h5")
+    dataset_test = SmallNorb(path + "/data/smallNorb/smallNorb_test10K.h5")
     def get_iterator(mode):
         if mode is True:
             dataset = dataset_train
@@ -202,17 +196,14 @@ if __name__ == "__main__":
         # Reconstruction visualization.
         test_sample = next(iter(get_iterator(False)))
 
-        ground_truth = (test_sample[0].unsqueeze(1).float() / 255.0)
-        # _, reconstructions = model(Variable(ground_truth).cuda())
-        # reconstruction = reconstructions.cpu().view_as(ground_truth).data
-        ground_truth_logger.log(
-            make_grid(ground_truth, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy())
-        # reconstruction_logger.log(
-        #     make_grid(reconstruction, nrow=int(BATCH_SIZE ** 0.5), normalize=True, range=(0, 1)).numpy())
+        ground_truth = (test_sample[0])
+        ground_truth_logger.log(make_grid(ground_truth, nrow=int(BATCH_SIZE ** 0.5)))
+       
 
         #increase r each epoch
         global r
-        r = r + 1./NUM_EPOCHS
+        if(r < 1):
+            r = r + 1./5
         print(r)
         
 
@@ -231,12 +222,13 @@ if __name__ == "__main__":
         labels = Variable(labels).cuda()
         
         if training:
-            classes, reconstructions = model(data, labels)
+            classes = model(data, labels)
         else:
-            classes, reconstructions = model(data)
+            classes = model(data)
         loss = capsule_loss(classes, labels, 1)
 
         prob = F.softmax(classes, dim = 1)
+        # prob = classes
            
         return loss, prob
 
