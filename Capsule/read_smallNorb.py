@@ -76,13 +76,11 @@ def _parse_NORB_cat_file(file_path):
         struct.unpack('<BBBB', f.read(4))  # ignore this integer
         struct.unpack('<BBBB', f.read(4))  # ignore this integer
 
-        examples = np.zeros(shape=2*num_examples, dtype=np.int32)
-        k = 0
+        examples = np.zeros(shape=num_examples, dtype=np.int32)
+      
         for i in tqdm(range(num_examples), desc='Loading categories...'):
             category, = struct.unpack('<i', f.read(4))
-            examples[k] = category
-            examples[k + 1] = category
-            k = k + 2
+            examples[i] = category
 
         return examples
 
@@ -106,30 +104,48 @@ def _parse_NORB_dat_file(file_path):
 
         num_examples, channels, height, width = header['dimensions']
 
-        examples = np.zeros(shape=(num_examples * channels, 92, 92), dtype=np.uint8)
+        examples = np.zeros(shape=(num_examples * channels, 48, 48), dtype=np.uint8)
 
         for i in tqdm(range(num_examples * channels), desc='Loading images...'):
 
             # Read raw image data and restore shape as appropriate
             image = struct.unpack('<' + height * width * 'B', f.read(height * width))
             image = np.uint8(np.reshape(image, newshape=(height, width)))
-            image = cv2.resize(image, (92, 92))
+            image = cv2.resize(image, (48, 48))
             examples[i] = image
+            cv2.imwrite(path + "/data/smallNorb/img/" + str(i)+".jpg", examples[i])
 
     return examples
 
-examples = _parse_NORB_dat_file(path + "/data/smallNorb/smallnorb-5x01235x9x18x6x2x96x96-testing-dat.mat")
-labels = _parse_NORB_cat_file(path + "/data/smallNorb/smallnorb-5x01235x9x18x6x2x96x96-testing-cat.mat")
-rand_index = np.random.randint(0, 23000, 10000)
-hf = h5py.File(path + "/data/smallNorb/smallNorb_test10K.h5", 'w')
-hf.create_dataset('data', data=examples[rand_index])
-hf.create_dataset('labels', data=labels[rand_index])
-hf.close()
+# index = range(0, 46000, 2)
+# examples1 = _parse_NORB_dat_file(path + "/data/smallNorb/smallnorb-5x46789x9x18x6x2x96x96-training-dat.mat")
+# labels1 = _parse_NORB_cat_file(path + "/data/smallNorb/smallnorb-5x46789x9x18x6x2x96x96-training-cat.mat")
+# labels1 = np.repeat(labels1, 2)
+# examples1 = examples1[index]
+# labels1 = labels1[index]
 
-examples = _parse_NORB_dat_file(path + "/data/smallNorb/smallnorb-5x46789x9x18x6x2x96x96-training-dat.mat")
-labels = _parse_NORB_cat_file(path + "/data/smallNorb/smallnorb-5x46789x9x18x6x2x96x96-training-cat.mat")
-rand_index = np.random.randint(0, 23000, 10000)
-hf = h5py.File(path + "/data/smallNorb/smallNorb_train.h5", 'w')
-hf.create_dataset('data', data=examples)
-hf.create_dataset('labels', data=labels)
-hf.close()
+# examples2 = _parse_NORB_dat_file(path + "/data/smallNorb/smallnorb-5x01235x9x18x6x2x96x96-testing-dat.mat")
+# labels2 = _parse_NORB_cat_file(path + "/data/smallNorb/smallnorb-5x01235x9x18x6x2x96x96-testing-cat.mat")
+# labels2 = np.repeat(labels2, 2)
+# examples2 = examples2[index]
+# labels2 = labels2[index]
+
+# data = np.concatenate([examples1, examples2], axis=0)
+# labels = np.concatenate([labels1, labels2], axis=0)
+
+# index_train = range(0, 46000, 2)
+# index_test = range(1, 46000, 2)
+# train_data = data[index_train]
+# train_labels = labels[index_train]
+# test_data = data[index_test]
+# test_labels = labels[index_test]
+
+# hf = h5py.File(path + "/data/smallNorb/smallNorb_ctest32.h5", 'w')
+# hf.create_dataset('data', data=test_data)
+# hf.create_dataset('labels', data=test_labels)
+# hf.close()
+
+# hf = h5py.File(path + "/data/smallNorb/smallNorb_ctrain32.h5", 'w')
+# hf.create_dataset('data', data=train_data)
+# hf.create_dataset('labels', data=train_labels)
+# hf.close()
