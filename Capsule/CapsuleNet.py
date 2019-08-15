@@ -10,6 +10,16 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 
+def squash(s, dim=-1):
+    """
+    Calculate non-linear squash function
+    s: unormalized capsule
+    v = (|s|^2)/(1+|s|^2)*(s/|s|)
+    """
+    squared_norm = (s ** 2).sum(dim=dim, keepdim=True)
+    scale = squared_norm / (1 + squared_norm)
+    v = scale * s / torch.sqrt(squared_norm)
+    return v
 ############EM Routing################
 def caps_em_routing(v, a_in, beta_u, beta_a, iters):
     """
@@ -39,19 +49,22 @@ def caps_em_routing(v, a_in, beta_u, beta_a, iters):
             r = torch.cuda.FloatTensor(b, h, w, B, C).fill_(1./C) * a_in
         else:
             ln_pjh = -1. * (v - mu)**2 / (2 * sigma_sq) - torch.log(sigma_sq.sqrt()) - 0.5*ln_2pi
-            ln_ap = ln_pjh.sum(dim=5) + torch.log(a_out.view(b, h, w, 1, C))
+            a_out = a_out.view(b, h, w, 1, C)
+            ln_ap = ln_pjh.sum(dim=5) + torch.log(a_out)
             r = F.softmax(ln_ap, dim=4)
+            r = r * a_out
            
         #M step
         r_sum = r.sum(dim=3, keepdim=True)
         coeff = r / (r_sum + eps)
-        
         coeff = coeff.view(b, h, w, B, C, 1)
         mu = torch.sum(coeff * v, dim=3, keepdim=True)
         sigma_sq = torch.sum(coeff * (v - mu)**2, dim=3, keepdim=True) + eps
         r_sum = r_sum.view(b, h, w, 1, C, 1)
-        cost_h = (beta_u + torch.log(sigma_sq.sqrt())) * r_sum
-        a_out = torch.sigmoid(_lambda*(beta_a - cost_h.sum(dim=5, keepdim=True)))
+        cost_h = (beta_u + 0.5*torch.log(sigma_sq)) * r_sum
+        logit = _lambda*(beta_a - cost_h.sum(dim=5, keepdim=True))
+        a_out = torch.sigmoid(logit)
+        
         
     mu = mu.view(b, h, w, C, psize)
     a_out = a_out.view(b, h, w, C, 1)
@@ -169,23 +182,24 @@ def caps_Fuzzy_routing(v, a_in, beta_u, beta_a, iters, m):
     b, h, w, B, C, psize = v.shape
 
     for iter_ in range(iters):
-        #E step
+
         if(iter_ == 0):
             r = torch.cuda.FloatTensor(b, h, w, B, C).fill_(1./C) * a_in
         else:
+            # r_n = torch.sum(torch.abs(v - mu), dim=5, keepdim=True)
             r_n = torch.sum((v - mu)**2, dim=5, keepdim=True)
             r_d = torch.sum(1 / (r_n), dim=4, keepdim=True)
             r = (r_n * r_d)**(1.0/(m - 1))
             r = (1 / r)
            
-        #M step
         r_sum = r.sum(dim=3, keepdim=True)
         coeff = r / (r_sum + eps)
         coeff = coeff.view(b, h, w, B, C, 1)
         mu = torch.sum(coeff * v, dim=3, keepdim=True)
         
-    sigma_sq = torch.sum(coeff * (v - mu)**2, dim=3, keepdim=True) + eps
-    cost_h = (beta_u + 1./2*torch.log(sigma_sq)) * r_sum
+    
+    sigma_sq = torch.sum(coeff * (v - mu)**2, dim=3, keepdim=True)
+    cost_h = (beta_u + 0.5*torch.log(sigma_sq)) * r_sum
     a_out = torch.sigmoid(_lambda*(beta_a - cost_h.sum(dim=5, keepdim=True)))
         
     mu = mu.view(b, h, w, C, psize)
@@ -193,8 +207,35 @@ def caps_Fuzzy_routing(v, a_in, beta_u, beta_a, iters, m):
     
     return mu, a_out
 
-
-
+def caps_Dynamic_routing(u, iters):
+    """
+    i in B: layer l, j in h*w*C: layer l + 1
+    with each cell in h*w, compute on matrix B*C
+    Input:
+        u:         (b, h, w, B, C, P*P)
+    Output:
+        mu:        (b, h, w, C, P*P)
+        a_out:     (b, h, w, C, 1)
+        'b = batch_size'
+        'h = height'
+        'w = width'
+        'C = depth'
+        'B = K*K*B'
+        'psize = P*P'
+    """
+    batch, h, w, B, C, psize = u.shape
+    b = Variable(torch.zeros(*u.size())).cuda()
+    for i in range(iters):
+        c = F.softmax(b, dim=3)
+        v = squash((c * u).sum(dim=3, keepdim=True))#non-linear activation of weighted sum v = sum(c*u)
+        if i != iters - 1:
+            b = b + (u * v).sum(dim=-1, keepdim=True)#consine similarity u*v
+            
+    a_out = (v ** 2).sum(dim=-1) ** 0.5
+    a_out = torch.sigmoid(a_out)
+    v = v.view(batch, h, w, C, psize)
+    a_out = a_out.view(batch, h, w, C, 1)
+    return v, a_out
 
 ############EM Routing################
 
@@ -281,8 +322,6 @@ class PrimaryCaps(nn.Module):
         b, c, h, w, = p.shape
         p = p.permute(0, 2, 3, 1)
         p = p.view(b, h, w, self.B, -1)
-        # pose = p[:, :, :, :, :self.P*self.P].contiguous()
-        # a = p[:, :, :, :, self.P*self.P:].contiguous()
         a = self.a(x)
         a = a.permute(0, 2, 3, 1)
         a = a.view(b, h, w, self.B, 1)
@@ -356,7 +395,6 @@ class ConvCaps(nn.Module):
         x = x.view(b, h, w, B, 1, P, P)
         # v = x @ self.weights
         v = torch.matmul(x, self.weights) #(b*H*W)*(K*K*B)*C*P*P
-        # print("voting ", torch.cuda.memory_allocated() / 1024**2)
         v = v.view(b, h, w, B, C, P*P)
         return v
 
@@ -390,7 +428,7 @@ class ConvCaps(nn.Module):
             if self.coor_add:
                 v = self.add_coord(v)
             v = v.view(b, 1, 1, -1, self.C, psize)
-        # em_routing
+
         # print("EM before ", torch.cuda.memory_allocated() / 1024**2)
         if(self.routing_mode == "EM"):
             p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
@@ -399,90 +437,11 @@ class ConvCaps(nn.Module):
         elif(self.routing_mode == "MS"):
             p_out, a_out = caps_MS_routing(v, a_in, self.beta_u, self.iters)
         elif(self.routing_mode == "Fuzzy"):
-            p_out, a_out = caps_Fuzzy_routing(v, a_in, self.beta_u, self.beta_a, self.iters, 2.0)
+            p_out, a_out = caps_Fuzzy_routing(v, a_in, self.beta_u, self.beta_a, self.iters, 1.25)
+        elif(self.routing_mode == "Dynamic"):
+            p_out, a_out = caps_Dynamic_routing(v, self.iters)
         # print("EM after ", torch.cuda.memory_allocated() / 1024**2)
         
-        return p_out, a_out
-
-class DepthWiseConvCaps(nn.Module):
-    """
-    Args:
-        B: input number of types of capsules
-        K: kernel size of convolution
-        P: size of pose matrix is P*P
-        stride: stride of convolution
-        iters: number of EM iterations
-    Shape:
-        input:  (*, h,  w, B, (P*P+1)) & (*, h,  w, B, 1)
-        output: (*, h',  w', B, (P*P+1)) & (*, h',  w', B, 1)
-        h', w' is computed the same way as convolution layer
-    """
-    def __init__(self, B=32, K=3, P=4, stride=2, iters=3, routing_mode = "EM"):
-        super(DepthWiseConvCaps, self).__init__()
-        self.B = B
-        self.K = K
-        self.P = P
-        self.psize = P*P
-        self.stride = stride
-        self.iters = iters
-        self.routing_mode = routing_mode
-        # params
-        # beta_u and beta_a are per capsule type,
-        self.beta_u = nn.Parameter(torch.zeros(B,1))
-        self.beta_a = nn.Parameter(torch.zeros(B,1))
-        # the filter size is P*P*k*k
-        self.weights = nn.Parameter(torch.randn(1, 1, 1, K*K, B, P, P))
-
-    def pactching(self, x):
-        """
-        Preparing windows for computing convolution
-        Shape:
-            Input:     (b, H, W, B, -1)
-            Output:    (b, H', W', K, K, B, -1)
-        """
-        K = self.K
-        stride = self.stride
-        b, h, w, B, psize = x.shape
-        oh = ow = int((h - K + 1) / stride)
-        idxs = [[(h_idx + k_idx) for k_idx in range(0, K)] for h_idx in range(0, h - K + 1, stride)]
-        x = x[:, idxs, :, :, :]
-        x = x[:, :, :, idxs, :, :]
-        x = x.permute(0, 1, 3, 2, 4, 5, 6).contiguous()
-        return x, oh, ow
-
-    def voting(self, x):
-        """
-        Preparing capsule data point for EM routing, 
-        For conv_caps:
-            Input:     (b, h, w, K*K, B, P*P)
-            Output:    (b, h, w, K*K, B, P*P)
-        """
-        P = self.P
-        b, h, w, K, B, psize = x.shape
-        x = x.view(b, h, w, K, B, P, P)
-        v = (x @ self.weights)
-        v = v.view(b, h, w, K, B, P*P)
-        return v
-
-    def forward(self, x, a):
-        b, h, w, B, psize = x.shape
-        # patching
-        p_in, oh, ow = self.pactching(x)
-        a_in, _, _ = self.pactching(a)
-        p_in = p_in.view(b, oh, ow, self.K*self.K, self.B, self.psize)
-        # voting
-        v = self.voting(p_in)
-        # print("voting ", torch.cuda.memory_allocated() / 1024**2)
-        a_in = a_in.view(b, oh, ow, self.K*self.K, self.B)
-
-        if(self.routing_mode == "EM"):
-            p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
-        elif(self.routing_mode == "EMsim"):
-            p_out, a_out = caps_EMsim_routing(v, a_in, self.beta_u, self.iters)
-        elif(self.routing_mode == "MS"):
-            p_out, a_out = caps_MS_routing(v, a_in, self.beta_u, self.iters)
-        # print("EM ", torch.cuda.memory_allocated() / 1024**2)
-       
         return p_out, a_out
 
 
@@ -499,7 +458,7 @@ class FCCaps(nn.Module):
         h', w' is computed the same way as convolution layer
         parameter size is: B*C*P*P + B*P*P
     """
-    def __init__(self, B=32, C=32, P=4, iters=3, routing_mode="EM"):
+    def __init__(self, B=32, C=32, P=4, s=6, iters=3, routing_mode="Dynamic"):
         super(FCCaps, self).__init__()
         self.B = B
         self.C = C
@@ -512,7 +471,7 @@ class FCCaps(nn.Module):
         self.beta_u = nn.Parameter(torch.zeros(C))
         self.beta_a = nn.Parameter(torch.zeros(C))
         # the filter size is P*P*k*k
-        self.weights = nn.Parameter(torch.randn(1, B, C, P, P))
+        self.weights = nn.Parameter(torch.randn(1, s*s*B, C, P, P))
 
     def voting(self, x):
         """
@@ -520,94 +479,30 @@ class FCCaps(nn.Module):
         Num Capsules at layer l: B
         Num Capsules at layer l + 1: C
         For conv_caps:
-            Input:     (b, B, P*P)
-            Output:    (b, B, C, P*P)
+            Input:     (b, h, w, B, P*P)
+            Output:    (b, h*w*B, C, P*P)
         """
-        P = self.C
-        C = self.P
-        b, B, psize = x.shape
-        #b: fix dimmension, B, random dimmension
-        x = x.view(b, B, 1, P, P)
-        v = x @ self.weights # b*B*C*P*P
-        v = v.view(b, B, C, P*P)
+        P = self.P
+        C = self.C
+        b, h, w, B, psize = x.shape
+        x = x.view(b, 1, 1, h*w*B, 1, P, P)
+        v = torch.matmul(x, self.weights)
+        v = v.view(b, 1, 1, h*w*B, C, P*P)
         return v
     
     def forward(self, x, a):
-        b, B, psize = x.shape
-        
         # voting
         v = self.voting(x)
-        v = v.view(b, 1, 1, self.B, self.C, self.psize)
-        a_in = a.view(b, 1, 1, self.B, 1)
-
+        
         if(self.routing_mode == "EM"):
             p_out, a_out = caps_em_routing(v, a_in, self.beta_u, self.beta_a, self.iters)
         elif(self.routing_mode == "EMsim"):
             p_out, a_out = caps_EMsim_routing(v, a_in, self.beta_u, self.iters)
         elif(self.routing_mode == "MS"):
             p_out, a_out = caps_MS_routing(v, a_in, self.beta_u, self.iters)
-        p_out = p_out.view(b, self.C, self.psize)
-        a_out = a_out.view(b, self.C, 1)
-
+        elif(self.routing_mode == "Dynamic"):
+            p_out, a_out = caps_Dynamic_routing(v, self.iters)
+        elif(self.routing_mode == "Fuzzy"):
+            p_out, a_out = caps_Fuzzy_routing(v, a_in, self.beta_u, self.beta_a, self.iters, 2)
+        
         return p_out, a_out
-
-
-NUM_ROUTING_ITERATIONS = 3
-class CapsuleLayer(nn.Module):
-    """
-    create CapsuleLayer and routing
-    """
-    def __init__(self, num_capsules, num_route_nodes, in_channels, out_channels, kernel_size=None, stride=None,
-                 num_iterations=NUM_ROUTING_ITERATIONS):
-        """
-        num_capsules = dimmension of output capsules (primary capsule)
-        out_channels = dimmension of output capsules (higher level capsule)
-        """
-        super(CapsuleLayer, self).__init__()
-        self.num_route_nodes = num_route_nodes
-        self.num_iterations = num_iterations
-        self.num_capsules = num_capsules
-        self.out_channels = out_channels
-        self.in_channels = in_channels
-
-        if num_route_nodes != -1:#higher capsule layer
-            self.route_weights = nn.Parameter(torch.randn(1, num_capsules, num_route_nodes, in_channels, out_channels))
-        else:#lowest capsule layer
-            self.capsules = nn.Conv2d(in_channels, out_channels * num_capsules, kernel_size=kernel_size, stride=stride, padding=0)
-
-    def squash(self, s, dim=-1):
-        """
-        Calculate non-linear squash function
-        s: unormalized capsule
-        v = (|s|^2)/(1+|s|^2)*(s/|s|)
-        """
-        squared_norm = (s ** 2).sum(dim=dim, keepdim=True)
-        scale = squared_norm / (1 + squared_norm)
-        v = scale * s / torch.sqrt(squared_norm)
-        return v
-
-    def forward(self, x):
-        """
-        Routing
-        x: capsules/features at l layer
-        v: capsules at l + 1 layer
-        """
-        if self.num_route_nodes != -1:#dynamic routing
-            #u = x * W matrixes in the last 2 dim are multiplied
-            x = x.view(x.size(0), 1, self.num_route_nodes, 1, self.in_channels)
-            u = x @ self.route_weights
-            #b = 0 => all elements of c are same, 
-            #after each iteration, all elements of b in the last 2 dim are same
-            b = Variable(torch.zeros(*u.size())).cuda()
-            for i in range(self.num_iterations):
-                c = F.softmax(b, dim=2)#calculate coefficient c = softmax(b)
-                v = self.squash((c * u).sum(dim=2, keepdim=True))#non-linear activation of weighted sum v = sum(c*u)
-                if i != self.num_iterations - 1:
-                    b = b + (u * v).sum(dim=-1, keepdim=True)#consine similarity u*v
-        else:#features -> primary capsules
-            v = self.capsules(x)
-            v = v.permute(0, 2, 3, 1).contiguous()
-            v = v.view(x.size(0), -1, self.num_capsules)
-            v = self.squash(v)
-           
-        return v.squeeze(0)
