@@ -12,3 +12,6 @@ Figure 3. EM Routing with Convoulitonal Capsule <br />
 
 ![alt text](https://github.com/Ka0Ri/Capsule-Network/blob/master/image/4.png) <br />
 Figure 4. Capsule Network architecture <br />
+
+![alt text](https://github.com/Ka0Ri/Capsule-Network/blob/master/image/5.png) <br />
+Figure 5. Shortcut routing <br />
