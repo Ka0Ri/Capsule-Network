@@ -1,17 +1,31 @@
-# Capsule-Network
-# My study about Capsule Network using Pytorch framework
+# Encapsulate Capsule Layers
+We reimplement Capsule Layers as proposed in 
 
-![alt text](https://github.com/Ka0Ri/Capsule-Network/blob/master/image/1.png) <br />
-Figure 1. MNist dataset visualized by Capsule vectors <br />
+## requisite
+- Python=3.9
+- CUDA: 
+- Pytorch framwork:
+- 
+#
+## 1. Capsule Network with Dynamic Routing:
 
-![alt text](https://github.com/Ka0Ri/Capsule-Network/blob/master/image/2.png) <br />
-Figure 2. Dynamic Routing with Fully Voting layer <br />
+## 2. Capsule Network with EM Routing: 
 
-![alt text](https://github.com/Ka0Ri/Capsule-Network/blob/master/image/3.png) <br />
-Figure 3. EM Routing with Convoulitonal Capsule <br />
+## 4. Capsule Nerwork with Dynamic Routing
+#
 
-![alt text](https://github.com/Ka0Ri/Capsule-Network/blob/master/image/4.png) <br />
-Figure 4. Capsule Network architecture <br />
+## list of papers
+- [EM routing](https://openreview.net/pdf?id=HJWLfGWRb)
+- [Dynamic routing](https://arxiv.org/pdf/1710.09829.pdf)
+- [Shortcut routing](https://search.ieice.org/bin/pdf_link.php?category=A&fname=e104-a_8_1043&lang=E&year=2021)
 
-![alt text](https://github.com/Ka0Ri/Capsule-Network/blob/master/image/5.png) <br />
-Figure 5. Shortcut routing <br />
+## list of implementation
+- [gram-ai/capsule-networks](https://github.com/gram-ai/capsule-networks)
+
+- [danielhavir/capsule-network](https://github.com/danielhavir/capsule-network)
+
+- [XifengGuo/CapsNet-Pytorch](https://github.com/XifengGuo/CapsNet-Pytorch)
+
+- [lidq92/pytorch-capsule-networks](https://github.com/lidq92/pytorch-capsule-networks)
+
+- [jindongwang/Pytorch-CapsuleNet](https://github.com/jindongwang/Pytorch-CapsuleNet)
