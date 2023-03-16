@@ -8,7 +8,7 @@
 - 
 #
 We reimplement Capsule Layers in 3 files: Routing.py, CapsuleLayer.py, and Model.py
-- Routing.py: Implement 3 routing methods: [EM](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#L16), [Dynamic](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#70), and [Fuzzy](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#L105).
+- Routing.py: Implement 3 routing methods: [EM](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#L16), [Dynamic](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#70), and [Fuzzy](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#L105). Details of algorithms are provided in [pdf](Algorithm.pdf)
 - CapsuleLayer.py: Implement [2D ConvCaps](), [Primary Capsules](), and [Shortcut Layers]().
 
 ![alt text](image/4.png)

@@ -94,10 +94,10 @@ class CapNets(nn.Module):
     def forward(self, x):
        
         x = self.conv_layers(x)
-        pose, a = self.primary_caps(x)
+        pose, a = self.primary_caps(x, sq=True)
 
         for i in range(0, architect_settings['n_caps']):
-            pose, a = self.caps_layers[i](pose, a, 'em', 3)
+            pose, a = self.caps_layers[i](pose, a, 'dynamic', 3)
            
         a = a.squeeze()
         pose = pose.squeeze()
@@ -176,7 +176,7 @@ if __name__  == "__main__":
               's': (1, 1)}
     }
 
-    model = CapNets(input_channel=1, num_classes=2).cuda()
-    input_tensor = torch.rand(2, 1, 28, 28).cuda()
+    model = CapNets(input_channel=1, num_classes=2)
+    input_tensor = torch.rand(2, 1, 28, 28)
     a = model(input_tensor)
     print(a)

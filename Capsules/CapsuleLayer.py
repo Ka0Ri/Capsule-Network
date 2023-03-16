@@ -20,8 +20,7 @@ class PrimaryCaps(nn.Module):
         h', w' is computed the same way as convolution layer
         parameter size is: K*K*A*B*P*P + B*P*P
     """
-    def __init__(self, A=32, B=32, K=1, stride=1):
-        P = 4
+    def __init__(self, A=32, B=32, K=1, stride=1, P=4):
         super(PrimaryCaps, self).__init__()
         self.pose = nn.Conv2d(in_channels=A, out_channels=B*P*P,
                             kernel_size=K, stride=stride, bias=False)
@@ -29,8 +28,8 @@ class PrimaryCaps(nn.Module):
                             kernel_size=K, stride=stride, bias=False)
         self.B = B
 
-    def forward(self, x, routing='dynamic'):
-        assert routing in ['dynamic', 'em', 'fuzzy'], "Routing method is not implemented yet!"
+    def forward(self, x, sq=False):
+       
 
         p = self.pose(x)
         b, c, h, w, = p.shape
@@ -41,7 +40,7 @@ class PrimaryCaps(nn.Module):
         a = a.view(b, h, w, self.B, 1)
         a = torch.sigmoid(a)
 
-        if(routing == 'dynamic'):
+        if(sq):
             p = squash(p)
        
         return p, a
@@ -65,12 +64,12 @@ class ConvCaps(nn.Module):
         h', w' is computed the same way as convolution layer
         parameter size is: K*K*B*C*P*P + B*P*P
     """
-    def __init__(self, B=32, C=32, K=3, stride=1):
+    def __init__(self, B=32, C=32, K=3, stride=1, P=4):
         super(ConvCaps, self).__init__()
         self.B = B
         self.C = C
         self.K = K
-        self.P = 4
+        self.P = P
         self.psize = self.P * self.P
         self.stride = stride
       
@@ -166,9 +165,16 @@ class Caps_Dropout(nn.Module):
 
 class CapLayer(nn.Module):
     """
-       3D convolution to predict higher capsules
+    2D Capsule Convolution as conventional 3D convolution to predict higher capsules
+        num_in_caps: number of capsule in L layer
+        num_out_caps: number of capsule in L + 1 layer
+        kernel_size: 2D kernel size
+        stride: stride when doing convolutional
+        in_dim: input size of a capsule
+        out_dim: output size of a capsule
+        groups: group convolution
     """
-    def __init__(self, num_in_caps, num_out_caps, kernel_size, stride=(1, 1), out_dim=(4,4), in_dim=(4,4), groups=1, bias=True):
+    def __init__(self, num_in_caps, num_out_caps, kernel_size, stride=(1, 1), out_dim=4, in_dim=4, groups=1, bias=True):
         super(CapLayer, self).__init__()
 
         self.num_out_caps = num_out_caps
@@ -176,10 +182,10 @@ class CapLayer(nn.Module):
         self.num_in_caps = num_in_caps
         self.in_dim = in_dim
 
-        assert (in_dim[0] * in_dim [1]) % out_dim[0] == 0
-        k = in_dim[0] * in_dim [1] // out_dim[0]
+        assert (in_dim ** 2) % out_dim == 0
+        k = in_dim ** 2 // out_dim
 
-        self.W = nn.Conv3d(in_channels = num_in_caps, out_channels = num_out_caps * out_dim[1], 
+        self.W = nn.Conv3d(in_channels = num_in_caps, out_channels = num_out_caps * out_dim, 
             kernel_size = (k , kernel_size[0], kernel_size[1]), stride=(k, stride[0], stride[1]), groups=groups, bias=bias)
 
     def forward(self, x):
@@ -193,14 +199,14 @@ class CapLayer(nn.Module):
         """
         s = self.W(x)
         n, C, D, h, w = s.size()
-        s = s.view(n, self.num_out_caps, self.out_dim[0] * self.out_dim[1], h, w)
+        s = s.view(n, self.num_out_caps, self.out_dim ** 2, h, w)
         
         return s
 
 
 class ChannelwiseCaps(nn.Module):
 
-    def __init__(self, num_in_caps, kernel_size, stride=(1,1), out_dim=(4,4), in_dim=(4,4)):
+    def __init__(self, num_in_caps, kernel_size, stride=(1,1), out_dim=4, in_dim=4):
         super(ChannelwiseCaps, self).__init__()
 
         self.dw = CapLayer(num_in_caps, num_in_caps, kernel_size, stride, 
@@ -218,11 +224,10 @@ class PointwiseCaps(nn.Module):
 
         self.pw = nn.Conv3d(num_in_caps, num_out_caps, kernel_size=1, stride=1, bias=False)
 
-    def forward(self, x):
+    def forward(self, x, sq=False):
     
         coarse_caps = self.pw(x)
-        if(routing_settings['mode'] == 'attention' or
-                routing_settings['mode'] == 'dynamic'):
+        if(sq):
             coarse_caps = squash(coarse_caps)
  
         return coarse_caps
@@ -253,7 +258,7 @@ class LocapBlock(nn.Module):
         """
         prevoted_caps = self.dw(x)
         coarse_caps = self.pw(prevoted_caps)
-        if(sq == True):
+        if(sq):
             coarse_caps = squash(coarse_caps)
  
         return prevoted_caps, coarse_caps
