@@ -97,7 +97,7 @@ class CapNets(nn.Module):
         pose, a = self.primary_caps(x)
 
         for i in range(0, architect_settings['n_caps']):
-            pose, a = self.caps_layers[i](pose, a, 'dynamic', 3)
+            pose, a = self.caps_layers[i](pose, a, 'em', 3)
            
         a = a.squeeze()
         pose = pose.squeeze()

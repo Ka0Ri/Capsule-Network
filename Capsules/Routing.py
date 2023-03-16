@@ -35,13 +35,14 @@ def caps_EM_routing(v, a_in, beta_u, beta_a, iters):
     """
     eps = 1e-06
     _lambda = 1e-03
-    ln_2pi = torch.cuda.FloatTensor(1).fill_(np.log(2*np.pi))
+    ln_2pi = torch.ones(1, device=v.device) * (np.log(2*np.pi))
     b, h, w, B, C, psize = v.shape
 
     for iter_ in range(iters):
         #E step
         if(iter_ == 0):
-            r = torch.cuda.FloatTensor(b, h, w, B, C).fill_(1./C) * a_in
+            r = torch.ones((b, h, w, B, C), device=a_in.device) * (1./C)
+            r = r * a_in
         else:
             ln_pjh = -1. * (v - mu)**2 / (2 * sigma_sq) - torch.log(sigma_sq.sqrt()) - 0.5*ln_2pi
             a_out = a_out.view(b, h, w, 1, C)
@@ -87,7 +88,7 @@ def caps_Dynamic_routing(u, b=None, iters=3):
     """
     batch, h, w, B, C, psize = u.shape
     if(b is None):
-        b = Variable(torch.zeros(*u.size())).cuda()
+        b = torch.zeros_like(u)
     for i in range(iters):
         c = torch.softmax(b, dim=4)
         v = squash((c * u).sum(dim=3, keepdim=True))#non-linear activation of weighted sum v = sum(c*u)
@@ -125,7 +126,8 @@ def caps_Fuzzy_routing(V, a_in, beta_a, _lambda, m, iters):
     for iter_ in range(iters):
         #fuzzy coeff
         if(iter_ == 0):
-            r = torch.cuda.FloatTensor(b, h, w, B, C).fill_(1./C) * a_in
+            r = torch.ones((b, h, w, B, C), device=a_in.device) * (1./C)
+            r = r * a_in
         else:
             r_n = (torch.norm((V - g), dim=-1)) ** (2/(m - 1)) + eps
             r_d = torch.sum(1. / (r_n), dim=4, keepdim=True)

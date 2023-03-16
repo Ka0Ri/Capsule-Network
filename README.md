@@ -1,7 +1,7 @@
 # Encapsulate Capsule Layers
 
 
-## requisite
+## prequisite
 - Python=3.9
 - CUDA: 11.2/11.3
 - Pytorch framwork: 1.12.1
@@ -11,9 +11,8 @@ We reimplement Capsule Layers in 3 files: Routing.py, CapsuleLayer.py, and Model
 - Routing.py: Implement 3 routing methods: [EM](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#L16), [Dynamic](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#70), and [Fuzzy](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#L105).
 - CapsuleLayer.py: Implement [2D ConvCaps](), [Primary Capsules](), and [Shortcut Layers]().
 
-![alt text](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/image/4.png)
-
-![alt text](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/image/5.png)
+![alt text](image/4.png)
+![alt text](image/5.png)
 - Model.py: Using those implemented module to build a CapsuleNetwork.
 
 #
