@@ -3,8 +3,8 @@
 
 ## requisite
 - Python=3.9
-- CUDA: 
-- Pytorch framwork:
+- CUDA: 11.2/11.3
+- Pytorch framwork: 1.12.1
 - 
 #
 We reimplement Capsule Layers in 3 files: Routing.py, CapsuleLayer.py, and Model.py
