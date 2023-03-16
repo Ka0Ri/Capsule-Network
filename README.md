@@ -8,8 +8,12 @@
 - 
 #
 We reimplement Capsule Layers in 3 files: Routing.py, CapsuleLayer.py, and Model.py
-- Routing.py: Implement 3 routing methods: EM, Dynamic, and Fuzzy.
-- CapsuleLayer.py: Implement 1D, 2D, and Primary Capsules.
+- Routing.py: Implement 3 routing methods: [EM](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#L16), [Dynamic](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#70), and [Fuzzy](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/Capsules/Routing.py#L105).
+- CapsuleLayer.py: Implement [2D ConvCaps](), [Primary Capsules](), and [Shortcut Layers]().
+
+![alt text](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/image/4.png)
+
+![alt text](https://github.com/Ka0Ri/Capsule-Network/blob/Encapsulate/image/5.png)
 - Model.py: Using those implemented module to build a CapsuleNetwork.
 
 #
