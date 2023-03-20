@@ -6,7 +6,7 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 from torchvision import models
 import numpy as np
-from CapsuleLayer import ConvCaps, PrimaryCaps
+from CapsuleLayer import ConvCaps, PrimaryCaps, Caps_Dropout, LocapBlock, glocapBlock
 
 
 #-----lOSS FUNCTION------
@@ -69,8 +69,16 @@ class SpreadLoss(nn.Module):
 class CapNets(nn.Module):
     """
     """
-    def __init__(self, input_channel=1, num_classes = 10):
+    def __init__(self, model_configs):
+        """
+        Original Capsule Network
+        - model_configs: Configurations for model
+        """
         super(CapNets, self).__init__()
+
+        self.cap_dim = model_configs['cap_dims']
+        self.n_caps = model_configs['n_caps']
+        self.routing_config = model_configs['routing']
 
         self.conv_layers = []
         for i in range(architect_settings['n_conv']):
@@ -86,9 +94,9 @@ class CapNets(nn.Module):
         self.primary_caps = PrimaryCaps(primary_caps['in'], primary_caps['out'], primary_caps['k'])
 
         self.caps_layers = nn.ModuleList()
-        for i in range(architect_settings['n_caps']):
+        for i in range(self.n_caps):
             caps = architect_settings['Caps' + str(i + 1)]
-            self.caps_layers.append(ConvCaps(caps['in'], caps['out'], caps['k'][0], caps['s'][0]))
+            self.caps_layers.append(ConvCaps(caps['in'], caps['out'], caps['k'][0], caps['s'][0], self.cap_dim))
            
 
     def forward(self, x):
@@ -96,15 +104,15 @@ class CapNets(nn.Module):
         x = self.conv_layers(x)
         pose, a = self.primary_caps(x, sq=True)
 
-        for i in range(0, architect_settings['n_caps']):
-            pose, a = self.caps_layers[i](pose, a, 'dynamic', 3)
+        for i in range(0, self.n_caps):
+            pose, a = self.caps_layers[i](pose, a, self.routing_config['type'], *self.routing_config['params'])
            
         a = a.squeeze()
         pose = pose.squeeze()
    
         return a
     
-#-----Baseline Convolutional Nerutal Network------
+#-----Baseline Convolutional Neural Network------
 class ConvNeuralNet(nn.Module):
     def __init__(self, input_chanel = 1, num_classes = 10):
         super(ConvNeuralNet, self).__init__()
@@ -138,8 +146,98 @@ class ConvNeuralNet(nn.Module):
         return out
 
 
+#-----Shortcut routing model------
+class CoreArchitect(nn.Module):
+    """
+    Shortcut Routing Network
+    - model_configs: Configurations for model
+    """
+    def __init__(self, model_configs):
+        super(CoreArchitect, self).__init__()
+        
+        self.num_classes = model_configs['n_cls']
+        self.primary_cap_num = model_configs['PrimayCaps']['out']
+        self.cap_dim = model_configs['cap_dims']
+        self.n_routs = model_configs['n_routing']
+        self.n_caps = model_configs['n_caps']
+        self.routing_config = model_configs['routing']
+        
+        self.conv_layers = []
+        for i in range(model_configs['n_conv']):
+            conv = model_configs['Conv' + str(i + 1)]
+            self.conv_layers.append(nn.Sequential(
+                nn.Conv2d(conv['in'], conv['out'], conv['k'], conv['s'], conv['p']),
+                nn.ReLU(),
+                nn.BatchNorm2d(conv['out']),
+            ))
+        self.conv_layers = nn.Sequential(*self.conv_layers)
+
+        primary_caps = model_configs['PrimayCaps']
+        self.primary_cap = nn.Sequential(
+            nn.Conv2d(primary_caps['in'], primary_caps['out'] * self.cap_dim * self.cap_dim, primary_caps['k'], primary_caps['s'], primary_caps['p']),
+            nn.ReLU(),
+            nn.BatchNorm2d(primary_caps['out'] * self.cap_dim * self.cap_dim),
+            )
+
+        self.dropout = Caps_Dropout(p=0.2)
+
+
+        self.caps_layers = nn.ModuleList()
+        self.dynamic_layers = nn.ModuleList()
+        for i in range(self.n_caps):
+            caps = model_configs['Caps' + str(i + 1)]
+            self.caps_layers.append(LocapBlock(num_in_caps=caps['in'], num_out_caps=caps['out'], 
+                                               kernel_size=caps['k'],stride=caps['s']))
+            self.dynamic_layers.append(glocapBlock(num_in_caps=caps['in'], num_out_caps=self.num_classes, P=self.cap_dim))
+            
+    
+        #kaiming initialization
+        self.weights_init()
+   
+            
+    def forward(self, x):
+        
+       
+        x = self.conv_layers(x)
+        x = self.primary_cap(x)
+       
+        n, c, h, w = x.size()
+        l1 = x.view(n, self.primary_cap_num, self.cap_dim * self.cap_dim, h, w)
+        l = self.dropout(l1)
+
+        p_caps = []
+        for i in range(0, self.n_caps):
+            p_cap, l = self.caps_layers[i](l)
+            p_caps.append(p_cap)
+            
+           
+        g = l.squeeze()
+            
+        for i in range(self.n_routs):
+            for i in range(self.n_caps):
+                a, g = self.dynamic_layers[i](p_caps[i], g, self.routing_config['type'],  *self.routing_config['params'])
+
+        return a
+    
+    def weights_init(self):
+        for m in self.modules():
+            if isinstance(m, (nn.Conv3d, nn.Conv2d)):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out')
+                #nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, (nn.BatchNorm2d, nn.BatchNorm3d)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, std=1e-3)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+
 if __name__  == "__main__":
     architect_settings = {
+    'n_cls': 10,
     'n_conv': 1,
     'Conv1': {'in': 1,
               'out': 64,
@@ -162,6 +260,8 @@ if __name__  == "__main__":
                    's': 1,
                    'p': 0},
     'n_caps': 3,
+    'cap_dims': 4,
+    'n_routing': 3,
     'Caps1': {'in': 32,
               'out': 32,
               'k': (3, 3),
@@ -173,10 +273,12 @@ if __name__  == "__main__":
     'Caps3': {'in': 32,
               'out': 10,
               'k': (3, 3),
-              's': (1, 1)}
+              's': (1, 1)},
+    'routing': {'type': "fuzzy",
+                'params' : [3, 10e-3, 2]}
     }
-
-    model = CapNets(input_channel=1, num_classes=2)
-    input_tensor = torch.rand(2, 1, 28, 28)
+    model = CapNets(model_configs=architect_settings).cuda()
+    # model = CoreArchitect(architect_settings).cuda()
+    input_tensor = torch.rand(2, 1, 28, 28).cuda()
     a = model(input_tensor)
     print(a)

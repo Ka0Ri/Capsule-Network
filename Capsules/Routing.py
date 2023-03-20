@@ -1,3 +1,8 @@
+"""
+Implement Routing methods: EM, Fuzzy, Dynamic
+Authors: dtvu1707@gmail.com
+"""
+
 import numpy as np
 import torch
 from torch.autograd import Variable
@@ -15,7 +20,7 @@ def squash(s, dim=-1):
 
 ##---EM Routing---
 
-def caps_EM_routing(v, a_in, beta_u, beta_a, iters):
+def caps_EM_routing(v, a_in, beta_u, beta_a, _lambda, iters, g=None):
     """
     EM routing proposed in Procedure 1 paper: Matrix capsule with EM routing
     i in B: layer l, j in h*w*C: layer l + 1
@@ -23,6 +28,7 @@ def caps_EM_routing(v, a_in, beta_u, beta_a, iters):
     Input:
         v:         (b, h, w, B, C, P*P) - pose
         a_in:      (b, h, w, B, 1) - activation
+        g: high-level capsule (b, h, w, C, P*P)
     Output:
         mu:        (b, h, w, C, P*P)
         a_out:     (b, h, w, C, 1)
@@ -34,22 +40,28 @@ def caps_EM_routing(v, a_in, beta_u, beta_a, iters):
         'psize = P*P'
     """
     eps = 1e-06
-    _lambda = 1e-03
     ln_2pi = torch.ones(1, device=v.device) * (np.log(2*np.pi))
     b, h, w, B, C, psize = v.shape
+   
+    if(g is not None):
+        sigma_sq = torch.sum((v - g)**2, dim=3, keepdim=True) + eps
+        cost_h = (beta_u + 0.5*torch.log(sigma_sq))
+        logit = _lambda*(beta_a - cost_h.sum(dim=-1, keepdim=True))
+        a_in = torch.sigmoid(logit).squeeze(5)
+        
+    r = torch.ones((b, h, w, B, C), device=a_in.device) * (1./C)
+    r = r * a_in
 
     for iter_ in range(iters):
+
         #E step
-        if(iter_ == 0):
-            r = torch.ones((b, h, w, B, C), device=a_in.device) * (1./C)
-            r = r * a_in
-        else:
+        if(iter_ > iters):
             ln_pjh = -1. * (v - mu)**2 / (2 * sigma_sq) - torch.log(sigma_sq.sqrt()) - 0.5*ln_2pi
             a_out = a_out.view(b, h, w, 1, C)
             ln_ap = ln_pjh.sum(dim=5) + torch.log(a_out)
             r = torch.softmax(ln_ap, dim=4)
             r = r * a_out
-           
+
         #M step
         r_sum = r.sum(dim=3, keepdim=True)
         coeff = r / (r_sum + eps)
@@ -60,8 +72,8 @@ def caps_EM_routing(v, a_in, beta_u, beta_a, iters):
         cost_h = (beta_u + 0.5*torch.log(sigma_sq)) * r_sum
         logit = _lambda*(beta_a - cost_h.sum(dim=5, keepdim=True))
         a_out = torch.sigmoid(logit)
-        
-        
+
+                   
     mu = mu.view(b, h, w, C, psize)
     a_out = a_out.view(b, h, w, C, 1)
   
@@ -69,13 +81,15 @@ def caps_EM_routing(v, a_in, beta_u, beta_a, iters):
 
 ##---Dynamic Routing---
 
-def caps_Dynamic_routing(u, b=None, iters=3):
+def caps_Dynamic_routing(u, a_in, iters, g=None):
     """
     Dynamic Routing in Procedure 1 in paper: Dynamic Routing Between Capsules 
     i in B: layer l, j in h*w*C: layer l + 1
     with each cell in h*w, compute on matrix B*C
     Input:
-        u:         (b, h, w, B, C, P*P)
+        u: pose     (b, h, w, B, C, P*P)
+        a_in: activation (b, h, w, B, 1)
+        g: high-level capsule (b, h, w, C, P*P)
     Output:
         mu:        (b, h, w, C, P*P)
         a_out:     (b, h, w, C, 1)
@@ -86,24 +100,29 @@ def caps_Dynamic_routing(u, b=None, iters=3):
         'B = K*K*B'
         'psize = P*P'
     """
-    batch, h, w, B, C, psize = u.shape
-    if(b is None):
-        b = torch.zeros_like(u)
+    b, h, w, B, C, psize = u.shape
+    if(g is None):
+        r = torch.ones((b, h, w, B, C), device=u.device) * (1./C)
+        r = r * a_in
+        r = torch.unsqueeze(r, 5)
+    else:
+        r = (g * u).sum(dim=-1, keepdim=True)
+    
     for i in range(iters):
-        c = torch.softmax(b, dim=4)
+        c = torch.softmax(r, dim=4)
         v = squash((c * u).sum(dim=3, keepdim=True))#non-linear activation of weighted sum v = sum(c*u)
         if i != iters - 1:
-            b = b + (u * v).sum(dim=-1, keepdim=True)#consine similarity u*v
+            r = r + (u * v).sum(dim=-1, keepdim=True)#consine similarity u*v
             
     a_out = torch.norm(v, dim=-1)
     a_out = torch.sigmoid(a_out)
-    v = v.view(batch, h, w, C, psize)
-    a_out = a_out.view(batch, h, w, C, 1)
+    v = v.view(b, h, w, C, psize)
+    a_out = a_out.view(b, h, w, C, 1)
     return v, a_out
 
 ##---Fuzzy Routing---
 
-def caps_Fuzzy_routing(V, a_in, beta_a, _lambda, m, iters):
+def caps_Fuzzy_routing(V, a_in, beta_a, _lambda, m, iters, g=None):
     """
     Fuzzy Routing in Fuzzy approach in paper: Capsule Network with Shortcut Routing
     i in B: layer l, j in h*w*C: layer l + 1
@@ -111,6 +130,7 @@ def caps_Fuzzy_routing(V, a_in, beta_a, _lambda, m, iters):
     Input:
         v:         (b, h, w, B, C, P*P) - pose
         a_in:      (b, h, w, B, 1) - activation
+        g: high-level capsule (b, h, w, C, P*P)
     Output:
         mu:        (b, h, w, C, P*P)
         a_out:     (b, h, w, C, 1)
@@ -123,12 +143,16 @@ def caps_Fuzzy_routing(V, a_in, beta_a, _lambda, m, iters):
     """
     eps = 1e-06
     b, h, w, B, C, psize = V.shape
+    if(g is None):
+        r = torch.ones((b, h, w, B, C), device=a_in.device) * (1./C)
+        r = r * a_in
+    else:
+        r_n = (torch.norm((V - g), dim=-1)) ** (2/(m - 1)) + eps
+        r_d = torch.sum(1. / (r_n), dim=4, keepdim=True)
+        r = (1. / (r_n * r_d)) ** m
     for iter_ in range(iters):
         #fuzzy coeff
-        if(iter_ == 0):
-            r = torch.ones((b, h, w, B, C), device=a_in.device) * (1./C)
-            r = r * a_in
-        else:
+        if(iter_ > 0):
             r_n = (torch.norm((V - g), dim=-1)) ** (2/(m - 1)) + eps
             r_d = torch.sum(1. / (r_n), dim=4, keepdim=True)
             r = (1. / (r_n * r_d)) ** (m)
