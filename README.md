@@ -4,8 +4,9 @@
 ## prequisite
 - Python=3.9
 - CUDA: 11.2/11.3
-- Pytorch framwork: 1.12.1
-- Others: numpy, opencv, scipy
+- Pytorch framwork: 1.12.1, pytorch-lightning
+- Others: numpy, opencv, scipy, torchmetrics
+- dashboard: neptune ai
 #
 We reimplement Capsule Layers in 3 files: Routing.py, CapsuleLayer.py, and Model.py
 - Routing.py: Implement 3 routing methods: [EM](Capsules/Routing.py#L16), [Dynamic](Capsules/Routing.py#70), and [Fuzzy](Capsules/Routing.py#L105). Algorithm's details are provided in [pdf](Algorithm.pdf)
