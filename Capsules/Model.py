@@ -91,7 +91,8 @@ class CapNets(nn.Module):
         self.conv_layers = nn.Sequential(*self.conv_layers)
         
         primary_caps = model_configs['PrimayCaps']
-        self.primary_caps = PrimaryCaps(primary_caps['in'], primary_caps['out'], primary_caps['k'])
+        self.primary_caps = PrimaryCaps(primary_caps['in'], primary_caps['out'], 
+                            primary_caps['k'], primary_caps['s'], P=self.cap_dim)
 
         self.caps_layers = nn.ModuleList()
         for i in range(self.n_caps):

@@ -25,7 +25,7 @@ class PrimaryCaps(nn.Module):
         h', w' is computed the same way as convolution layer
         parameter size is: K*K*A*B*P*P + B*P*P
     """
-    def __init__(self, A=32, B=32, K=1, stride=1, P=4):
+    def __init__(self, A, B, K, stride, P):
         super(PrimaryCaps, self).__init__()
         self.pose = nn.Conv2d(in_channels=A, out_channels=B*P*P,
                             kernel_size=K, stride=stride, bias=False)
@@ -69,7 +69,7 @@ class ConvCaps(nn.Module):
         h', w' is computed the same way as convolution layer
         parameter size is: K*K*B*C*P*P + B*P*P
     """
-    def __init__(self, B=32, C=32, K=3, stride=1, P=4):
+    def __init__(self, B, C, K, stride, P):
         super(ConvCaps, self).__init__()
         self.B = B
         self.C = C
@@ -118,7 +118,7 @@ class ConvCaps(nn.Module):
         v = v.view(b, h, w, B, C, P*P)
         return v
 
-    def forward(self, x, a, routing='dynamic', *argv):
+    def forward(self, x, a, routing, *argv):
         """
         Forward pass
             routing: routing method
@@ -181,7 +181,7 @@ class CapLayer(nn.Module):
         out_dim: output size of a capsule
         groups: group convolution
     """
-    def __init__(self, num_in_caps, num_out_caps, kernel_size, stride=(1, 1), out_dim=4, in_dim=4, groups=1, bias=True):
+    def __init__(self, num_in_caps, num_out_caps, kernel_size, stride, out_dim, in_dim, groups=1, bias=True):
         super(CapLayer, self).__init__()
 
         self.num_out_caps = num_out_caps
@@ -221,7 +221,7 @@ class LocapBlock(nn.Module):
     Output of a local block is 2 capsules: pre-voting capsules (work as skip-connection), and coarse capsules (a coarse prediction for a local capsule)
     Implemented by CapLayer module, so the arguments are set according to CapLayer's arguments
     """
-    def __init__(self, num_in_caps, num_out_caps, kernel_size, stride=(1,1), out_dim=4, in_dim=4):
+    def __init__(self, num_in_caps, num_out_caps, kernel_size, stride, out_dim, in_dim):
         super(LocapBlock, self).__init__()
 
         self.dw = CapLayer(num_in_caps, num_in_caps, kernel_size, stride, 
@@ -246,7 +246,7 @@ class LocapBlock(nn.Module):
         return prevoted_caps, coarse_caps
     
 class glocapBlock(nn.Module):
-    def __init__(self, num_in_caps, num_out_caps, P=4):
+    def __init__(self, num_in_caps, num_out_caps, P):
         """
         Global Capsule Block where routing algorithms will operate to calculate th final global capsule
         It can be understaned as attention from final layer to early layers

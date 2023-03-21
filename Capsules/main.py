@@ -20,7 +20,7 @@ neptune_logger = NeptuneLogger(
 PARAMS = {
     "architect_settings": 
     {
-        "shortcut": True,
+        "shortcut": False,
         "n_cls": 10,
         "n_conv": 2,
         "Conv1": {"in": 1,
