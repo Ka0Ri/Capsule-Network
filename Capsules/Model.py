@@ -103,11 +103,13 @@ class CapNets(nn.Module):
     def forward(self, x):
        
         x = self.conv_layers(x)
-        pose, a = self.primary_caps(x, sq=True)
+        if(self.routing_config['type'] == "dynamic"): 
+            pose, a = self.primary_caps(x, sq=True)
+        else:
+            pose, a = self.primary_caps(x, sq=False)
 
         for i in range(0, self.n_caps):
             pose, a = self.caps_layers[i](pose, a, self.routing_config['type'], *self.routing_config['params'])
-           
            
         a = a.squeeze()
         pose = pose.squeeze()

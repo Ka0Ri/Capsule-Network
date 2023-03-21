@@ -123,8 +123,9 @@ class CapsuleModel(LightningModule):
         self.test_step_outputs.clear()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=PARAMS['training_settings']['lr'])
-        # optimizer = torch.optim.SGD(_model.parameters(), lr=training_settings['lr'])
+        # optimizer = torch.optim.Adam(self.parameters(), lr=PARAMS['training_settings']['lr'])
+        optimizer = torch.optim.SGD(self.parameters(), lr=PARAMS['training_settings']['lr'], 
+                                    weight_decay=PARAMS['training_settings']['weight_decay'])
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=PARAMS['training_settings']['lr_step'], 
                                                     gamma=PARAMS['training_settings']['lr_decay'])
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
@@ -247,10 +248,10 @@ if __name__ == "__main__":
 
     # (neptune) initialize a trainer and pass neptune_logger
     trainer = Trainer(
-        # logger=neptune_logger,
+        logger=neptune_logger,
         max_epochs=PARAMS['training_settings']["n_epoch"],
         accelerator="gpu",
-        devices=1,
+        devices=[1],
         callbacks=[checkpoint_callback]
     )
 
