@@ -161,6 +161,8 @@ cython_debug/
 
 #log
 .neptune
+lightning_logs
+model
 
 #dataset
 data

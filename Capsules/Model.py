@@ -53,7 +53,7 @@ class SpreadLoss(nn.Module):
         b, E = output.shape
         margin = self.m_min + (self.m_max - self.m_min)*r
 
-        gt = torch.zeros(output.size(0), self.num_classes)
+        gt = torch.zeros(output.size(0), self.num_classes, device=target.device)
         gt = gt.scatter_(1, target.unsqueeze(1), 1)
         gt = gt.bool()
         at = torch.masked_select(output, mask=gt)
@@ -81,8 +81,8 @@ class CapNets(nn.Module):
         self.routing_config = model_configs['routing']
 
         self.conv_layers = []
-        for i in range(architect_settings['n_conv']):
-            conv = architect_settings['Conv' + str(i + 1)]
+        for i in range(model_configs['n_conv']):
+            conv = model_configs['Conv' + str(i + 1)]
             self.conv_layers.append(nn.Sequential(
                 nn.Conv2d(conv['in'], conv['out'], conv['k'], conv['s'], conv['p']),
                 nn.ReLU(),
@@ -90,12 +90,12 @@ class CapNets(nn.Module):
             ))
         self.conv_layers = nn.Sequential(*self.conv_layers)
         
-        primary_caps = architect_settings['PrimayCaps']
+        primary_caps = model_configs['PrimayCaps']
         self.primary_caps = PrimaryCaps(primary_caps['in'], primary_caps['out'], primary_caps['k'])
 
         self.caps_layers = nn.ModuleList()
         for i in range(self.n_caps):
-            caps = architect_settings['Caps' + str(i + 1)]
+            caps = model_configs['Caps' + str(i + 1)]
             self.caps_layers.append(ConvCaps(caps['in'], caps['out'], caps['k'][0], caps['s'][0], self.cap_dim))
            
 

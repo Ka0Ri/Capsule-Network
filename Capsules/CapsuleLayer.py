@@ -95,7 +95,7 @@ class ConvCaps(nn.Module):
         K = self.K
         stride = self.stride
         b, h, w, B, psize = x.shape
-        oh = ow = int((h - K + 1) / stride)
+        oh = ow = int((h - K) / stride) + 1
         idxs = [[(h_idx + k_idx) for k_idx in range(0, K)] for h_idx in range(0, h - K + 1, stride)]
         x = x[:, idxs, :, :, :]
         x = x[:, :, :, idxs, :, :]
