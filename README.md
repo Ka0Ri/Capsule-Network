@@ -9,8 +9,8 @@
 - dashboard: neptune ai
 #
 We reimplement Capsule Layers in 3 files: Routing.py, CapsuleLayer.py, and Model.py
-- Routing.py: Implement 3 routing methods: [EM](Capsules/Routing.py#L16), [Dynamic](Capsules/Routing.py#70), and [Fuzzy](Capsules/Routing.py#L105). Algorithm's details are provided in [pdf](Algorithm.pdf)
-- CapsuleLayer.py: Implement [2D ConvCaps](), [Primary Capsules](), and [Shortcut Layers]().
+- Routing.py: Implement 3 routing methods: [EM](Capsules/Routing.py#L23), [Dynamic](Capsules/Routing.py#84), and [Fuzzy](Capsules/Routing.py#L125). Algorithm's details are provided in [pdf](Algorithm.pdf)
+- CapsuleLayer.py: Implement [2D ConvCaps](Capsules/CapsuleLayer.py#L54), [Primary Capsules](Capsules/CapsuleLayer.py#L12), and [Shortcut Layers](Capsules/CapsuleLayer.py#L173).
 
 ![alt text](image/4.png)
 ![alt text](image/5.png)

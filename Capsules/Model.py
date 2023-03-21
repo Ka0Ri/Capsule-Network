@@ -107,6 +107,7 @@ class CapNets(nn.Module):
         for i in range(0, self.n_caps):
             pose, a = self.caps_layers[i](pose, a, self.routing_config['type'], *self.routing_config['params'])
            
+           
         a = a.squeeze()
         pose = pose.squeeze()
    
@@ -187,7 +188,7 @@ class CoreArchitect(nn.Module):
         for i in range(self.n_caps):
             caps = model_configs['Caps' + str(i + 1)]
             self.caps_layers.append(LocapBlock(num_in_caps=caps['in'], num_out_caps=caps['out'], 
-                                               kernel_size=caps['k'],stride=caps['s']))
+                                               kernel_size=caps['k'],stride=caps['s'],out_dim=self.cap_dim, in_dim=self.cap_dim))
             self.dynamic_layers.append(glocapBlock(num_in_caps=caps['in'], num_out_caps=self.num_classes, P=self.cap_dim))
             
     

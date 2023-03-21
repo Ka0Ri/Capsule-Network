@@ -1,6 +1,7 @@
 PARAMS = {
     "architect_settings": 
     {
+        "shortcut": True,
         "n_cls": 10,
         "n_conv": 2,
         "Conv1": {"in": 1,

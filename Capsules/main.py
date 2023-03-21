@@ -20,58 +20,59 @@ neptune_logger = NeptuneLogger(
 PARAMS = {
     "architect_settings": 
     {
-        'n_cls': 10,
-        'n_conv': 2,
-        'Conv1': {'in': 1,
-                'out': 64,
-                'k': 5,
-                's': 2,
-                'p': 0},
-        'Conv2': {'in': 64,
-                'out': 128,
-                'k': 3,
-                's': 1,
-                'p': 0},
-        'Conv3': {'in': 128,
-                'out': 128,
-                'k': 5,
-                's': 2,
-                'p': 0},
-        'PrimayCaps': {'in': 128,
-                    'out':32,
-                    'k': 1,
-                    's': 1,
-                    'p': 0},
-        'n_caps': 2,
-        'cap_dims': 4,
-        'n_routing': 3,
-        'Caps1': {'in': 32,
-                'out': 32,
-                'k': (3, 3),
-                's': (2, 2)},
-        'Caps2': {'in': 32,
-                'out': 10,
-                'k': (3, 3),
-                's': (1, 1)},
-        'Caps3': {'in': 32,
-                'out': 10,
-                'k': (3, 3),
-                's': (1, 1)},
-        'routing': {'type': "dynamic",
-                    'params' : [3]}
+        "shortcut": True,
+        "n_cls": 10,
+        "n_conv": 2,
+        "Conv1": {"in": 1,
+                "out": 64,
+                "k": 5,
+                "s": 2,
+                "p": 0},
+        "Conv2": {"in": 64,
+                "out": 128,
+                "k": 5,
+                "s": 1,
+                "p": 0},
+        "Conv3": {"in": 128,
+                "out": 128,
+                "k": 5,
+                "s": 2,
+                "p": 0},
+        "PrimayCaps": {"in": 128,
+                    "out":32,
+                    "k": 1,
+                    "s": 1,
+                    "p": 0},
+        "n_caps": 2,
+        "cap_dims": 4,
+        "n_routing": 3,
+        "Caps1": {"in": 32,
+                "out": 32,
+                "k": (3, 3),
+                "s": (2, 2)},
+        "Caps2": {"in": 32,
+                "out": 10,
+                "k": (3, 3),
+                "s": (1, 1)},
+        "Caps3": {"in": 32,
+                "out": 10,
+                "k": (3, 3),
+                "s": (1, 1)},
+        "routing": {"type": "dynamic",
+                    "params" : [3]}
     },
 
     "training_settings":
     {
-        'lr': 0.001,
-        'lr_step': 20,
-        'lr_decay': 0.8,
-        'momentum': 0.9,
-        'weight_decay': 5e-4,
-        'n_epoch': 2,
-        'n_batch': 32,
-        'dataset': 'Mnist',
-        'ckpt_path': 'ckpt'
+        "lr": 0.001,
+        "lr_step": 20,
+        "lr_decay": 0.8,
+        "momentum": 0.9,
+        "weight_decay": 5e-4,
+        "n_epoch": 2,
+        "n_batch": 32,
+        "dataset": "Mnist",
+        "ckpt_path": "ckpt"
     }
 }
 
@@ -79,7 +80,10 @@ class CapsuleModel(LightningModule):
     def __init__(self):
         super().__init__()
 
-        self.model = CapNets(model_configs=PARAMS['architect_settings'])
+        if(PARAMS['architect_settings']['shortcut']):
+            self.model = CoreArchitect(model_configs=PARAMS['architect_settings'])
+        else:
+            self.model = CapNets(model_configs=PARAMS['architect_settings'])
         self.loss = SpreadLoss(num_classes=PARAMS['architect_settings']['n_cls'])
 
         self.training_step_outputs = []
@@ -120,8 +124,9 @@ class CapsuleModel(LightningModule):
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
-        loss = self.loss(y_hat, y)
        
+        loss = self.loss(y_hat, y)
+
         y_true = y.tolist()
         y_pred = y_hat.argmax(axis=1).tolist()
         self.validation_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred})
