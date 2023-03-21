@@ -1,4 +1,5 @@
 import numpy as np
+import yaml
 import torch
 from sklearn.metrics import accuracy_score
 from torch.nn import functional as F
@@ -11,70 +12,19 @@ from pytorch_lightning import LightningModule, Trainer
 
 from pytorch_lightning.loggers import NeptuneLogger
 
+
 neptune_logger = NeptuneLogger(
     project="kaori/Capsule",
     api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIyZjZiMDA2YS02MDM3LTQxZjQtOTE4YS1jODZkMTJjNGJlMDYifQ==",
     log_model_checkpoints=False,
 )
 
-PARAMS = {
-    "architect_settings": 
-    {
-        "shortcut": False,
-        "n_cls": 10,
-        "n_conv": 2,
-        "Conv1": {"in": 1,
-                "out": 64,
-                "k": 5,
-                "s": 2,
-                "p": 0},
-        "Conv2": {"in": 64,
-                "out": 128,
-                "k": 5,
-                "s": 1,
-                "p": 0},
-        "Conv3": {"in": 128,
-                "out": 128,
-                "k": 5,
-                "s": 2,
-                "p": 0},
-        "PrimayCaps": {"in": 128,
-                    "out":32,
-                    "k": 1,
-                    "s": 1,
-                    "p": 0},
-        "n_caps": 2,
-        "cap_dims": 4,
-        "n_routing": 3,
-        "Caps1": {"in": 32,
-                "out": 32,
-                "k": (3, 3),
-                "s": (2, 2)},
-        "Caps2": {"in": 32,
-                "out": 10,
-                "k": (3, 3),
-                "s": (1, 1)},
-        "Caps3": {"in": 32,
-                "out": 10,
-                "k": (3, 3),
-                "s": (1, 1)},
-        "routing": {"type": "dynamic",
-                    "params" : [3]}
-    },
 
-    "training_settings":
-    {
-        "lr": 0.001,
-        "lr_step": 20,
-        "lr_decay": 0.8,
-        "momentum": 0.9,
-        "weight_decay": 5e-4,
-        "n_epoch": 2,
-        "n_batch": 32,
-        "dataset": "Mnist",
-        "ckpt_path": "ckpt"
-    }
-}
+with open("Capsules/config.yaml", 'r') as stream:
+    try:
+        PARAMS = yaml.safe_load(stream)
+    except yaml.YAMLError as exc:
+        print(exc)
 
 class CapsuleModel(LightningModule):
     def __init__(self):
@@ -276,7 +226,7 @@ if __name__ == "__main__":
         ])
 
         Train_data = SmallNorbread(mode="train", data_path="smallNorb", transform=Train_transform)
-        Val_data = SmallNorbread(mode="val", data_path="smallNorb", transform=Train_transform)
+        Val_data = SmallNorbread(mode="val", data_path="smallNorb", transform=Test_transform)
         Test_data = SmallNorbread(mode="test", data_path="smallNorb", transform=Test_transform)
 
 

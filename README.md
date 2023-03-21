@@ -17,7 +17,7 @@ We reimplement Capsule Layers in 3 files: Routing.py, CapsuleLayer.py, and Model
 - Model.py: Using above implemented modules to build a [CapsuleNetwork](Capsules/Model.py#L117), [Shortcut Architecture](Capsules/Model.py#L151).
 
 # Training Interface
-Examples of training Capsule Network can be found in [ReadDataset.py](Capsules/ReadDataset.py) and [main.py](Capsules/main.py), we config hyper-parameters in [config.json](Capsules/config.json) file
+Examples of training Capsule Network can be found in [ReadDataset.py](Capsules/ReadDataset.py) and [main.py](Capsules/main.py), we config hyper-parameters in [config.yaml](Capsules/config.yaml) file
 
 - ReadDataset.py: there are five datasets have been pre-defined: Mnist, [affNist](Capsules/ReadDataset.py#L153), Fashion Mnist, SVHN, and [smallNorb](Capsules/ReadDataset.py#L14)
 - main.py: Our main module is [CapsuleModel](Capsules/main.py#L80) that based on [pytorch-lightning](https://lightning.ai/pages/open-source/) and logged by [neptune-ai](https://neptune.ai/)
