@@ -2,7 +2,7 @@
     "architect_settings": 
     {
         "shortcut": True,
-        "n_cls": 10,
+        "n_cls": 5,
         "n_conv": 2,
         "Conv1": {"in": 1,
                 "out": 64,
@@ -32,9 +32,9 @@
                 "k": [3, 3],
                 "s": [2, 2]},
         "Caps2": {"in": 32,
-                "out": 10,
+                "out": 5,
                 "k": [3, 3],
-                "s": [1, 1]},
+                "s": [2, 2]},
         # "Caps3": {"in": 32,
         #         "out": 10,
         #         "k": (3, 3),

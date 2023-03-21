@@ -209,7 +209,7 @@ if __name__ == "__main__":
     elif(PARAMS['training_settings']['dataset'] == 'smallNorb'):
 
         Train_transform = transforms.Compose([
-            # transforms.ToPILImage(),
+            transforms.ToPILImage(),
             transforms.RandomRotation(degrees=10),
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32),

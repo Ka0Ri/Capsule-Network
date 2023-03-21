@@ -23,7 +23,7 @@ class SmallNorbread(Dataset):
             target_labels = np.repeat(target_labels, repeats=2)
         
         self.input_images = np.array(input_images).astype(np.uint8)
-        self.target_labels = np.array(target_labels)
+        self.target_labels = np.array(target_labels).astype(np.int64)
         self.transform = transform
         
 
