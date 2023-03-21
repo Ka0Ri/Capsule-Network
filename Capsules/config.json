@@ -44,14 +44,14 @@ PARAMS = {
 
     "training_settings":
     {
-        'lr': 0.001,
-        'lr_step': 20,
-        'lr_decay': 0.8,
-        'momentum': 0.9,
-        'weight_decay': 5e-4,
-        'n_epoch': 2,
-        'n_batch': 32,
-        'dataset': 'Mnist',
-        'ckpt_path': 'ckpt'
+        "lr": 0.001,
+        "lr_step": 20,
+        "lr_decay": 0.8,
+        "momentum": 0.9,
+        "weight_decay": 5e-4,
+        "n_epoch": 2,
+        "n_batch": 32,
+        "dataset": "Mnist",
+        "ckpt_path": "ckpt"
     }
 }
