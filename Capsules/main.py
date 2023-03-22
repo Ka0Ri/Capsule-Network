@@ -2,10 +2,8 @@ import numpy as np
 import yaml
 import torch
 from sklearn.metrics import accuracy_score
-from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from torchvision.datasets import MNIST
 from Model import *
 from ReadDataset import *
 from pytorch_lightning import LightningModule, Trainer
@@ -23,6 +21,7 @@ neptune_logger = NeptuneLogger(
 with open("Capsules/config.yaml", 'r') as stream:
     try:
         PARAMS = yaml.safe_load(stream)
+        PARAMS = PARAMS['affNist']
     except yaml.YAMLError as exc:
         print(exc)
 
@@ -121,14 +120,30 @@ class CapsuleModel(LightningModule):
         self.logger.experiment["test/loss"] = loss.mean()
         self.logger.experiment["test/acc"] = acc
         self.test_step_outputs.clear()
+    
+    def predict_step(self, batch, batch_idx):
+        x = batch
+        y_hat = self(x)
+      
+        y_pred = y_hat.argmax(axis=1).tolist()
+        return y_pred
 
     def configure_optimizers(self):
-        # optimizer = torch.optim.Adam(self.parameters(), lr=PARAMS['training_settings']['lr'])
-        optimizer = torch.optim.SGD(self.parameters(), lr=PARAMS['training_settings']['lr'], 
-                                    weight_decay=PARAMS['training_settings']['weight_decay'])
+        optimizer = torch.optim.Adam(self.parameters(), lr=PARAMS['training_settings']['lr'])
+        # optimizer = torch.optim.SGD(self.parameters(), lr=PARAMS['training_settings']['lr'], 
+        #                             weight_decay=PARAMS['training_settings']['weight_decay'])
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=PARAMS['training_settings']['lr_step'], 
                                                     gamma=PARAMS['training_settings']['lr_decay'])
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
+
+
+
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
@@ -251,7 +266,7 @@ if __name__ == "__main__":
         logger=neptune_logger,
         max_epochs=PARAMS['training_settings']["n_epoch"],
         accelerator="gpu",
-        devices=[1],
+        devices=[0],
         callbacks=[checkpoint_callback]
     )
 

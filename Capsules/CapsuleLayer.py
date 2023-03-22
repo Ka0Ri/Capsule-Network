@@ -292,6 +292,7 @@ class glocapBlock(nn.Module):
         v = v.view(N, 1, 1, self.in_channels*W*H, self.n_classes, D)
         g = g[:, None, None, None, :, :]
 
+
         if(routing == 'em'):
             g, a = caps_EM_routing(v, None, self.beta_u, self.beta_a, argv[1], argv[0], g=g)
         elif(routing == 'dynamic'):

@@ -43,13 +43,13 @@ class CrossEntropyLoss(nn.Module):
         
 class SpreadLoss(nn.Module):
 
-    def __init__(self, num_classes, m_min=0.1, m_max=0.9):
+    def __init__(self, num_classes, m_min=0.1, m_max=1):
         super(SpreadLoss, self).__init__()
         self.m_min = m_min
         self.m_max = m_max
         self.num_classes = num_classes
 
-    def forward(self, output, target, r=1):
+    def forward(self, output, target, r=0.9):
         b, E = output.shape
         margin = self.m_min + (self.m_max - self.m_min)*r
 
