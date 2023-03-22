@@ -118,36 +118,35 @@ class CapNets(nn.Module):
     
 #-----Baseline Convolutional Neural Network------
 class ConvNeuralNet(nn.Module):
-    def __init__(self, input_chanel = 1, num_classes = 10):
+    def __init__(self, model_configs):
         super(ConvNeuralNet, self).__init__()
-        self.layer1 = nn.Sequential(
-            nn.Conv2d(input_chanel, 32, kernel_size=5, stride=1, padding=0),
-            nn.ReLU(),
-            nn.BatchNorm2d(32),
-            nn.MaxPool2d(kernel_size=2, stride=2)
-            )
-        self.layer2 = nn.Sequential(
-            nn.Conv2d(32, 64, kernel_size=5, stride=1, padding=0),
-            nn.ReLU(),
-            nn.BatchNorm2d(64),
-            nn.MaxPool2d(kernel_size=2, stride=2)
-            )
-        self.fc = nn.Sequential(
-            nn.Linear(3136, 1024),
-            nn.ReLU()
-            )
-        self.fc1 = nn.Linear(1024, num_classes)
 
+        self.conv_layers = []
+        for i in range(model_configs['n_conv']):
+            conv = model_configs['Conv' + str(i + 1)]
+            self.conv_layers.append(nn.Sequential(
+                nn.Conv2d(conv['in'], conv['out'], conv['k'], conv['s'], conv['p']),
+                nn.ReLU(),
+                nn.BatchNorm2d(conv['out']),
+            ))
+        self.conv_layers = nn.Sequential(*self.conv_layers)
+
+        self.caps_layers = []
+        for i in range(model_configs['n_caps']):
+            caps = model_configs['Caps' + str(i + 1)]
+            self.caps_layers.append(nn.Sequential(
+                nn.Conv2d(caps['in'], caps['out'], caps['k'], caps['s']),
+                nn.ReLU(),
+                nn.BatchNorm2d(caps['out']),
+            ))
+        self.caps_layers = nn.Sequential(*self.caps_layers)
+      
         
     def forward(self, x):
-        out = self.layer1(x)
-        out = self.layer2(out)
-        out = out.reshape(out.size(0), -1)
-        
-        out = self.fc(out)
-        out = self.fc1(out)
+        out = self.conv_layers(x)
+        out = self.caps_layers(out)
 
-        return out
+        return out.squeeze()
 
 
 #-----Shortcut routing model------
