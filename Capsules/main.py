@@ -11,12 +11,6 @@ from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.loggers import NeptuneLogger
 
 
-neptune_logger = NeptuneLogger(
-    project="kaori/Capsule",
-    api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIyZjZiMDA2YS02MDM3LTQxZjQtOTE4YS1jODZkMTJjNGJlMDYifQ==",
-    log_model_checkpoints=False,
-)
-
 
 with open("Capsules/config.yaml", 'r') as stream:
     try:
@@ -26,7 +20,7 @@ with open("Capsules/config.yaml", 'r') as stream:
         print(exc)
 
 class CapsuleModel(LightningModule):
-    def __init__(self):
+    def __init__(self, PARAMS):
         super().__init__()
 
         if(PARAMS['architect_settings']['shortcut'] == "convolution"):
@@ -36,7 +30,8 @@ class CapsuleModel(LightningModule):
         else:
             self.model = CapNets(model_configs=PARAMS['architect_settings'])
 
-        if(PARAMS['architect_settings']['shortcut'] == "convolution"):
+        # if(PARAMS['architect_settings']['shortcut'] == "convolution"):
+        if(True):
             self.loss = CrossEntropyLoss(num_classes=PARAMS['architect_settings']['n_cls'])
         else:
             self.loss = SpreadLoss(num_classes=PARAMS['architect_settings']['n_cls'])
@@ -131,8 +126,9 @@ class CapsuleModel(LightningModule):
         x = batch
         y_hat = self(x)
       
-        y_pred = y_hat.argmax(axis=1).tolist()
-        return y_pred
+        # y_pred = y_hat.argmax(axis=1)
+        y_pred = torch.softmax(y_hat, dim=1)
+        return y_pred.tolist()
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=PARAMS['training_settings']['lr'])
@@ -146,13 +142,13 @@ class CapsuleModel(LightningModule):
 
 
 
-
-
-
-
-
-
 if __name__ == "__main__":
+
+    neptune_logger = NeptuneLogger(
+        project="kaori/Capsule",
+        api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIyZjZiMDA2YS02MDM3LTQxZjQtOTE4YS1jODZkMTJjNGJlMDYifQ==",
+        log_model_checkpoints=False,
+    )
 
     ##Data Loader
     if(PARAMS['training_settings']['dataset'] == 'Mnist'):
@@ -260,7 +256,7 @@ if __name__ == "__main__":
     from pytorch_lightning.callbacks import ModelCheckpoint
     torch.set_float32_matmul_precision('medium')
 
-    model = CapsuleModel()
+    model = CapsuleModel(PARAMS=PARAMS)
 
     # (neptune) log hyper-parameters
     neptune_logger.log_hyperparams(params=PARAMS)

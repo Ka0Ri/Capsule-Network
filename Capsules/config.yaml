@@ -52,7 +52,7 @@
         "affNist": {
                 "architect_settings": 
                 {
-                        "shortcut": False,
+                        "shortcut": True,
                         "n_cls": 10,
                         "n_conv": 2,
                         "Conv1": {"in": 1,
@@ -87,7 +87,7 @@
 
                 "training_settings":
                 {
-                        "lr": 0.0001,
+                        "lr": 0.001,
                         "lr_step": 20,
                         "lr_decay": 0.8,
                         "momentum": 0.9,
@@ -95,7 +95,82 @@
                         "n_epoch": 200,
                         "n_batch": 128,
                         "dataset": "affNist",
-                        "ckpt_path": "affNist-fuzzy",
+                        "ckpt_path": "affNist-fuzzy-ce",
                 }
-        }
+        },
+
+        "gradio": {
+                "architect_settings": 
+                {
+                        "shortcut": "convolution",
+                        "n_cls": 10,
+                        "n_conv": 2,
+                        "Conv1": {"in": 1,
+                                "out": 64,
+                                "k": 5,
+                                "s": 2,
+                                "p": 0},
+                        "Conv2": {"in": 64,
+                                "out": 128,
+                                "k": 5,
+                                "s": 2,
+                                "p": 0},
+                        "PrimayCaps": {"in": 128,
+                                "out": 32,
+                                "k": 1,
+                                "s": 1,
+                                "p": 0},
+                        "n_caps": 2,
+                        "cap_dims": 4,
+                        "n_routing": 2,
+                        "Caps1": {"in": 128,
+                                "out": 32,
+                                "k": [3, 3],
+                                "s": [2, 2]},
+                        "Caps2": {"in": 32,
+                                "out": 10,
+                                "k": [3, 3],
+                                "s": [1, 1]},
+                        "routing": {"type": "dynamic",
+                                "params" : [3]}
+                },
+        },
+
+        "gradio1": {
+                "architect_settings": 
+                {
+                        "shortcut": True,
+                        "n_cls": 10,
+                        "n_conv": 2,
+                        "Conv1": {"in": 1,
+                                "out": 64,
+                                "k": 5,
+                                "s": 2,
+                                "p": 0},
+                        "Conv2": {"in": 64,
+                                "out": 128,
+                                "k": 5,
+                                "s": 2,
+                                "p": 0},
+                        "PrimayCaps": {"in": 128,
+                                "out": 32,
+                                "k": 1,
+                                "s": 1,
+                                "p": 0},
+                        "n_caps": 2,
+                        "cap_dims": 4,
+                        "n_routing": 2,
+                        "Caps1": {"in": 32,
+                                "out": 32,
+                                "k": [3, 3],
+                                "s": [2, 2]},
+                        "Caps2": {"in": 32,
+                                "out": 10,
+                                "k": [3, 3],
+                                "s": [1, 1]},
+                        "routing": {"type": "fuzzy",
+                                "params" : [3, 0.1, 2]}
+                },
+        },
+
 }

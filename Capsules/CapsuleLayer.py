@@ -290,9 +290,9 @@ class glocapBlock(nn.Module):
         l = l.permute(0, 1, 3, 4, 2).contiguous().view(N, C, W * H, self.P, self.P)
         v = l[:, :, :, None, :, :] @ self.weight
         v = v.view(N, 1, 1, self.in_channels*W*H, self.n_classes, D)
+
         g = g[:, None, None, None, :, :]
-
-
+        
         if(routing == 'em'):
             g, a = caps_EM_routing(v, None, self.beta_u, self.beta_a, argv[1], argv[0], g=g)
         elif(routing == 'dynamic'):
