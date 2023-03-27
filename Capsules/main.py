@@ -40,6 +40,16 @@ class CapsuleModel(LightningModule):
         self.validation_step_outputs = []
         self.test_step_outputs = []
 
+        self.features_blobs = []
+
+        # for CAM visualization
+        def hook_feature(module, input, output):
+            self.features_blobs.append(np.array(output.tolist()))
+        if(PARAMS['architect_settings']['shortcut'] == "convolution"):
+            self.model.caps_layers[0].register_forward_hook(hook_feature)
+        else:
+            self.model.caps_layers.register_forward_hook(hook_feature)
+
     def forward(self, x):
         return self.model(x)
 
@@ -268,7 +278,7 @@ if __name__ == "__main__":
         logger=neptune_logger,
         max_epochs=PARAMS['training_settings']["n_epoch"],
         accelerator="gpu",
-        devices=[1],
+        devices=[0],
         callbacks=[checkpoint_callback]
     )
 

@@ -25,7 +25,7 @@ Examples of training Capsule Network can be found in [ReadDataset.py](Capsules/R
 #
 
 ## Testing Interface
-We deploy our model using [Streamlit](https://streamlit.io/), which supports  activation map visualization and see the results
+We deploy (demo) our model using [Gradio](https://gradio.app/), which supports  activation map visualization and see the results
 #
 ## list of papers
 - [EM routing](https://openreview.net/pdf?id=HJWLfGWRb)
