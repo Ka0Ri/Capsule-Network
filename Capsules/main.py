@@ -43,12 +43,14 @@ class CapsuleModel(LightningModule):
         self.features_blobs = []
 
         # for CAM visualization
-        def hook_feature(module, input, output):
-            self.features_blobs.append(np.array(output.tolist()))
         if(PARAMS['architect_settings']['shortcut'] == "convolution"):
+            def hook_feature(module, input, output):
+                self.features_blobs.append(np.array(output.tolist()))
             self.model.caps_layers[0].register_forward_hook(hook_feature)
         else:
-            self.model.caps_layers.register_forward_hook(hook_feature)
+            def hook_feature(module, input, output):
+                self.features_blobs.append(np.array(output[0].tolist()))
+            self.model.caps_layers[0].register_forward_hook(hook_feature)
 
     def forward(self, x):
         return self.model(x)

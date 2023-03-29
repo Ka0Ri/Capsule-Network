@@ -59,9 +59,10 @@ def returnCAM(img, feature_conv, weight_softmax, class_idx):
     bz, nc, h, w = feature_conv.shape
     output_cam = []
    
-    weight_softmax = weight_softmax[class_idx].sum(axis=(2, 3))
+    weight_softmax = weight_softmax.sum(axis=(2, 3))
+    feature_conv = feature_conv[0]
     for idx in class_idx:
-        cam = weight_softmax.dot(feature_conv[0].reshape((nc, h*w)))
+        cam = weight_softmax[idx].dot(feature_conv.reshape((nc, h*w)))
         cam = cam.reshape(h, w)
         cam = normalize(cam)
        
@@ -75,20 +76,36 @@ def returnCAM(img, feature_conv, weight_softmax, class_idx):
     
     return normalize(result)
 
-def predict(img, model, x_batch):
+def CapsuleCAM(img, feature_conv, weight_softmax, class_idx):
 
-    cls = model(x_batch)[0]
-    cls = torch.softmax(cls, dim=-1).tolist()
-    labels = {k: float(v) for k, v in enumerate(cls)}
-
-    #visualize CAM
-    params = list(model.parameters())
-    weight_softmax = np.squeeze(params[-4].tolist())
-    features_map = np.array(model.features_blobs[-1])
+    size_upsample = (40, 40)
+    bz, nc, p, h, w = feature_conv.shape
+    output_cam = []
    
-    activation_map = returnCAM(img, features_map, weight_softmax, class_idx=[np.argmax(cls)])
+    weight_softmax = weight_softmax.transpose(1, 0, 2, 3).reshape(-1, nc * p)
+    feature_conv = feature_conv[0]
     
-    return labels, activation_map
+    for idx in class_idx:
+        cam = weight_softmax[idx].dot(feature_conv.reshape((nc * p, h * w)))
+        cam = cam.reshape(h, w)
+        cam = normalize(cam)
+       
+        output_cam.append(cv2.resize(cam, size_upsample))
+
+    img = cv2.cvtColor(np.array(img),cv2.COLOR_GRAY2RGB)
+    height, width, _ = img.shape
+    CAM = cv2.resize(output_cam[0], (width, height))
+    heatmap = cv2.applyColorMap(CAM, cv2.COLORMAP_JET)
+    result = heatmap * 0.3 + img * 0.5
+    
+    return normalize(result)
+    
+
+def run():
+    import time
+    for i in range(0, 10):
+        time.sleep(1)
+        yield load_data()
 
 
 def load_data():
@@ -98,14 +115,30 @@ def load_data():
     dummy = torch.zeros_like(x)
     x_batch = torch.stack([x, dummy])
 
-    labels, activation_map = predict(img, convmodel, x_batch)
+    # Convolution
+    cls = convmodel(x_batch)[0]
+    cls = torch.softmax(cls, dim=-1).tolist()
+    labels = {k: float(v) for k, v in enumerate(cls)}
+
+    #visualize CAM
+    params = list(convmodel.parameters())
+    weight_softmax = np.squeeze(params[-4].tolist())
+    features_map = np.array(convmodel.features_blobs[-1])
+   
+    activation_map = returnCAM(img, features_map, weight_softmax, class_idx=[np.argmax(cls)])
     
-    # labels2, activation_map2 = predict(img, capsule, x_batch)
+    # Capsule
     cls2 = capsule(x_batch)[0]
     cls2 = torch.softmax(cls2, dim=-1).tolist()
     labels2 = {k: float(v) for k, v in enumerate(cls2)}
-    
-    return img, "class {}".format(y), labels, labels2, activation_map
+
+    params = list(capsule.parameters())
+    weight_softmax = np.squeeze(params[-3].tolist())
+    features_map = np.array(capsule.features_blobs[-1])
+
+    activation_map2 = CapsuleCAM(img, features_map, weight_softmax, class_idx=[np.argmax(cls2)])
+
+    return img, "class {}".format(y), labels, labels2, activation_map, activation_map2
 
 with gr.Blocks() as demo:
 
@@ -120,10 +153,34 @@ with gr.Blocks() as demo:
             label_conv = gr.Label(label="Convolutional Model", num_top_classes=4)
             label_capsule = gr.Label(label="Capsule model", num_top_classes=4)
             btn = gr.Button(value="Load random image")
-    btn.click(load_data, inputs=None, outputs=[im, cls_box, label_conv, label_capsule, conv_explain])
+    btn.click(run, inputs=None, outputs=[im, cls_box, label_conv, label_capsule, conv_explain, capsule_explain])
 
-   
+# def load_test():
+#     import time
+#     while(True):
+#         index = random.randint(0, 1000)
+#         x, y = Test_data[index]
+#         img = transforms.ToPILImage()(x)
+#         yield img
+#         time.sleep(1)
+
+
+# with gr.Blocks() as demo:
+
+#     gr.Markdown("## Image Examples")
+#     with gr.Row():
+#         with gr.Column():
+#             im = gr.Image().style(width=200, height=200)
+#             capsule_explain = gr.Image(label="Capsule Activation map").style(width=300, height=300)
+#             conv_explain = gr.Image(label= "Activation map").style(width=300, height=300)
+#         with gr.Column():
+#             cls_box = gr.Textbox(label="True Image class")
+#             label_conv = gr.Label(label="Convolutional Model", num_top_classes=4)
+#             label_capsule = gr.Label(label="Capsule model", num_top_classes=4)
+#             btn = gr.Button(value="Load random image")
+#     btn.click(load_test, inputs=None, outputs=[im])
 
 if __name__ == "__main__":
     # load_data()
-    demo.launch()
+    demo.queue()
+    demo.launch(share=True)
