@@ -151,22 +151,49 @@ class SmallNorbread(Dataset):
 
 
 class affNistread(Dataset):
-    def __init__(self, mode, data_path, transform=None):
+    def __init__(self, mode, data_path, aff=True, transform=None):
        
         self.img_size = 40 * 40
-        if(mode == "train"):
-            self.size = 50000
-            data, label = self._read_data_randomly(num=10000, data_path=os.path.join(data_path, "training_batches"), one_of_n=False)
-            data = data.reshape((10000, 40, 40))
+        if(aff):
+            if(mode == "train"):
+                self.size = 50000
+                data, label = self._read_data_randomly(num=self.size, data_path=os.path.join(data_path, "training_batches"), one_of_n=False)
+                data = data.reshape((self.size, 40, 40))
+            else:
+                self.size = 10000
+                data, label = self._read_data_randomly(num=10000, data_path=os.path.join(data_path, "test_batches"), one_of_n=False)
+                data = data.reshape((10000, 40, 40))
         else:
-            self.size = 10000
-            data, label = self._read_data_randomly(num=10000, data_path=os.path.join(data_path, "test_batches"), one_of_n=False)
-            data = data.reshape((10000, 40, 40))
-
+            if(mode == "train"):
+                data, label = self._read_centered(data_path=os.path.join(data_path, "training"), one_of_n=False)
+                data = data.reshape((50000, 40, 40))
+            else:
+                data, label = self._read_centered(data_path=os.path.join(data_path, "test"), one_of_n=False)
+                data = data.reshape((10000, 40, 40))
+        
         self.input_images = np.array(data, np.uint8)
         self.target_labels = np.array(label)
         
         self.transform = transform
+
+
+    def _read_centered(self, data_path, one_of_n=True):
+        data = scipy.io.loadmat(data_path)
+        images = data.get("affNISTdata")["image"]
+        images = images[0][0].transpose()
+
+        if one_of_n:
+            data = data.get("affNISTdata")["label_one_of_n"]
+            labels = data[0][0].transpose()
+        else:
+            data = data.get("affNISTdata")["label_int"]
+            labels = data[0][0][0].transpose()
+        
+        if one_of_n:
+            labels = labels.reshape(-1, 10)
+
+        
+        return images, labels
  
 
     def _read_images(self, start, num, data_path, flat=True):
@@ -375,5 +402,5 @@ if __name__ == "__main__":
     # smallNorb = SmallNorbread(mode="test", data_path="smallNorb")
     # cv2.imwrite("test_{}.jpg".format(smallNorb[2][1]), smallNorb[2][0])
 
-    affNist = affNistread(mode="train", data_path="affMnist")
-    cv2.imwrite("test_{}.jpg".format(affNist[9999][1]), affNist[9999][0])
+    affNist = affNistread(mode="train", data_path="centerMnist", aff=False)
+    cv2.imwrite("test_{}.jpg".format(affNist[10000][1]), affNist[10000][0])

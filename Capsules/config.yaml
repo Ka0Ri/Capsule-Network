@@ -52,7 +52,7 @@
         "affNist": {
                 "architect_settings": 
                 {
-                        "shortcut": True,
+                        "shortcut": "convolution",
                         "n_cls": 10,
                         "n_conv": 2,
                         "Conv1": {"in": 1,
@@ -73,7 +73,7 @@
                         "n_caps": 2,
                         "cap_dims": 4,
                         "n_routing": 2,
-                        "Caps1": {"in": 32,
+                        "Caps1": {"in": 128,
                                 "out": 32,
                                 "k": [3, 3],
                                 "s": [2, 2]},
@@ -81,8 +81,8 @@
                                 "out": 10,
                                 "k": [3, 3],
                                 "s": [1, 1]},
-                        "routing": {"type": "fuzzy",
-                                "params" : [3, 0.1, 2]}
+                        "routing": {"type": None,
+                                "params" : None}
                 },
 
                 "training_settings":
@@ -95,7 +95,8 @@
                         "n_epoch": 200,
                         "n_batch": 128,
                         "dataset": "affNist",
-                        "ckpt_path": "affNist-fuzzy-ce",
+                        "center": True,
+                        "ckpt_path": "centerNist-conv",
                 }
         },
 

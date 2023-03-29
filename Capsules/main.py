@@ -30,8 +30,8 @@ class CapsuleModel(LightningModule):
         else:
             self.model = CapNets(model_configs=PARAMS['architect_settings'])
 
-        # if(PARAMS['architect_settings']['shortcut'] == "convolution"):
-        if(True):
+        if(PARAMS['architect_settings']['shortcut'] == "convolution"):
+        # if(True):
             self.loss = CrossEntropyLoss(num_classes=PARAMS['architect_settings']['n_cls'])
         else:
             self.loss = SpreadLoss(num_classes=PARAMS['architect_settings']['n_cls'])
@@ -201,19 +201,25 @@ if __name__ == "__main__":
     elif(PARAMS['training_settings']['dataset'] == 'affNist'):
         Train_transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.RandomAffine(degrees=0, translate=(0.125, 0.125)),
+            # transforms.RandomAffine(degrees=0, translate=(0.125, 0.125)),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
             transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
             
         Test_transform = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.RandomAffine(degrees=60, translate=(0.2, 0.2)),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
             transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
-
-        Train_data = affNistread(mode="train", data_path="affMnist", transform=Train_transform)
-        Val_data =  affNistread(mode="val", data_path="affMnist", transform=Test_transform)
-        Test_data = affNistread(mode="test", data_path="affMnist", transform=Test_transform)
+        if(PARAMS['training_settings']['center'] == True):
+            Train_data = affNistread(mode="train", data_path="centerMnist", aff=False, transform=Train_transform)
+            Val_data =  affNistread(mode="val", data_path="centerMnist", aff=False, transform=Test_transform)
+            Test_data = affNistread(mode="test", data_path="centerMnist", aff=False, transform=Test_transform)
+        else:
+            Train_data = affNistread(mode="train", data_path="affMnist", transform=Train_transform)
+            Val_data =  affNistread(mode="val", data_path="affMnist", transform=Test_transform)
+            Test_data = affNistread(mode="test", data_path="affMnist", transform=Test_transform)
 
     elif(PARAMS['training_settings']['dataset'] == 'SVHN'):
 
