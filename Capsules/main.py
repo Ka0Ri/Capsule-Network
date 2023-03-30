@@ -208,10 +208,11 @@ if __name__ == "__main__":
             
         Test_transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.RandomAffine(degrees=60, translate=(0.2, 0.2)),
+            transforms.RandomAffine(degrees=30, translate=(0.2, 0.2)),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
             transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
+        
         if(PARAMS['training_settings']['center'] == True):
             Train_data = affNistread(mode="train", data_path="centerMnist", aff=False, transform=Train_transform)
             Val_data =  affNistread(mode="val", data_path="centerMnist", aff=False, transform=Test_transform)
