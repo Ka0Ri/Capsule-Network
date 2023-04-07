@@ -22,10 +22,14 @@ Examples of training Capsule Network can be found in [ReadDataset.py](Capsules/R
 
 - ReadDataset.py: there are five datasets have been pre-defined: Mnist, [affNist](Capsules/ReadDataset.py#L153), Fashion Mnist, SVHN, and [smallNorb](Capsules/ReadDataset.py#L14)
 - main.py: Our main module is [CapsuleModel](Capsules/main.py#L80) that based on [pytorch-lightning](https://lightning.ai/pages/open-source/) and logged by [neptune-ai](https://neptune.ai/)
+
+![alt text](image/run.png)
 #
 
 ## Testing Interface
 We deploy (demo) our model using [Gradio](https://gradio.app/), which supports  activation map visualization and see the results
+
+![alt text](image/gradio.png)
 #
 ## list of papers
 - [EM routing](https://openreview.net/pdf?id=HJWLfGWRb)

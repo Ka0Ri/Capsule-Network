@@ -39,7 +39,8 @@ Test_transform = transforms.Compose([
             transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
 
-Test_data = affNistread(mode="test", data_path="affMnist", transform=Test_transform)
+Test_data = affNistread(mode="test", data_path="data/centerMnist", transform=Test_transform, aff=False)
+
 
 
 # trainer = Trainer(accelerator="gpu", devices=[1])
