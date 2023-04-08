@@ -6,7 +6,7 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 from torchvision import models
 import numpy as np
-from CapsuleLayer import ConvCaps, PrimaryCaps, Caps_Dropout, LocapBlock, glocapBlock
+from CapsuleLayer1 import ConvCaps, PrimaryCaps, Caps_Dropout, LocapBlock, glocapBlock
 
 
 #-----lOSS FUNCTION------
@@ -38,7 +38,7 @@ class CrossEntropyLoss(nn.Module):
         self.loss = nn.CrossEntropyLoss()
     
     def forward(self, output, target):
-        output = F.softmax(output, dim=1)
+        # output = F.softmax(output, dim=1)
         return self.loss(output, target)
         
 class SpreadLoss(nn.Module):

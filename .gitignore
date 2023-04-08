@@ -163,6 +163,7 @@ cython_debug/
 .neptune
 lightning_logs
 model
+upload
 
 #dataset
 data

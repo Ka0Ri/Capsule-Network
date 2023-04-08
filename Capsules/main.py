@@ -30,8 +30,8 @@ class CapsuleModel(LightningModule):
         else:
             self.model = CapNets(model_configs=PARAMS['architect_settings'])
 
-        if(PARAMS['architect_settings']['shortcut'] == "convolution"):
-        # if(True):
+        # if(PARAMS['architect_settings']['shortcut'] == "convolution"):
+        if(True):
             self.loss = CrossEntropyLoss(num_classes=PARAMS['architect_settings']['n_cls'])
         else:
             self.loss = SpreadLoss(num_classes=PARAMS['architect_settings']['n_cls'])
@@ -51,6 +51,7 @@ class CapsuleModel(LightningModule):
             def hook_feature(module, input, output):
                 self.features_blobs.append(np.array(output[0].tolist()))
             self.model.caps_layers[0].register_forward_hook(hook_feature)
+            self.model.caps_layers[1].register_forward_hook(hook_feature)
 
     def forward(self, x):
         return self.model(x)
@@ -214,13 +215,13 @@ if __name__ == "__main__":
         ])
         
         if(PARAMS['training_settings']['center'] == True):
-            Train_data = affNistread(mode="train", data_path="centerMnist", aff=False, transform=Train_transform)
-            Val_data =  affNistread(mode="val", data_path="centerMnist", aff=False, transform=Test_transform)
-            Test_data = affNistread(mode="test", data_path="centerMnist", aff=False, transform=Test_transform)
+            Train_data = affNistread(mode="train", data_path="data/centerMnist", aff=False, transform=Train_transform)
+            Val_data =  affNistread(mode="val", data_path="data/centerMnist", aff=False, transform=Test_transform)
+            Test_data = affNistread(mode="test", data_path="data/centerMnist", aff=False, transform=Test_transform)
         else:
-            Train_data = affNistread(mode="train", data_path="affMnist", transform=Train_transform)
-            Val_data =  affNistread(mode="val", data_path="affMnist", transform=Test_transform)
-            Test_data = affNistread(mode="test", data_path="affMnist", transform=Test_transform)
+            Train_data = affNistread(mode="train", data_path="data/affMnist", transform=Train_transform)
+            Val_data =  affNistread(mode="val", data_path="data/affMnist", transform=Train_transform)
+            Test_data = affNistread(mode="test", data_path="data/affMnist", transform=Train_transform)
 
     elif(PARAMS['training_settings']['dataset'] == 'SVHN'):
 
@@ -262,9 +263,9 @@ if __name__ == "__main__":
             transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
 
-        Train_data = SmallNorbread(mode="train", data_path="smallNorb", transform=Train_transform)
-        Val_data = SmallNorbread(mode="val", data_path="smallNorb", transform=Test_transform)
-        Test_data = SmallNorbread(mode="test", data_path="smallNorb", transform=Test_transform)
+        Train_data = SmallNorbread(mode="train", data_path="data/smallNorb", transform=Train_transform)
+        Val_data = SmallNorbread(mode="val", data_path="data/smallNorb", transform=Test_transform)
+        Test_data = SmallNorbread(mode="test", data_path="data/smallNorb", transform=Test_transform)
 
 
     Train_dataloader = DataLoader(dataset=Train_data, batch_size = PARAMS['training_settings']['n_batch'], shuffle=True, num_workers=4)

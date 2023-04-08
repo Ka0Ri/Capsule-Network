@@ -20,9 +20,9 @@ with open("Capsules/config.yaml", 'r') as stream:
         print(exc)
 
 # model = CapsuleModel(PARAMS)
-convmodel = CapsuleModel.load_from_checkpoint("model/affNist-conv/epoch=193-step=15326.ckpt", PARAMS=PARAMS["gradio"])
+convmodel = CapsuleModel.load_from_checkpoint(PARAMS["gradio"]["model_path"], PARAMS=PARAMS["gradio"])
 convmodel.eval()
-capsule = CapsuleModel.load_from_checkpoint("model/affNist-fuzzy-ce/epoch=5-step=474.ckpt", PARAMS=PARAMS["gradio1"])
+capsule = CapsuleModel.load_from_checkpoint(PARAMS["gradio1"]["model_path"], PARAMS=PARAMS["gradio1"])
 # disable randomness, dropout, etc...
 capsule.eval()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
 
@@ -82,12 +82,38 @@ def CapsuleCAM(img, feature_conv, weight_softmax, class_idx):
     size_upsample = (40, 40)
     bz, nc, p, h, w = feature_conv.shape
     output_cam = []
-   
+    
     weight_softmax = weight_softmax.transpose(1, 0, 2, 3).reshape(-1, nc * p)
     feature_conv = feature_conv[0]
     
     for idx in class_idx:
         cam = weight_softmax[idx].dot(feature_conv.reshape((nc * p, h * w)))
+        cam = cam.reshape(h, w)
+        cam = normalize(cam)
+       
+        output_cam.append(cv2.resize(cam, size_upsample))
+
+    img = cv2.cvtColor(np.array(img),cv2.COLOR_GRAY2RGB)
+    height, width, _ = img.shape
+    CAM = cv2.resize(output_cam[0], (width, height))
+    heatmap = cv2.applyColorMap(CAM, cv2.COLORMAP_JET)
+    result = heatmap * 0.3 + img * 0.5
+    
+    return normalize(result)
+
+def CapsuleAttentionMap(img, feature_conv, global_feature, class_idx):
+
+    size_upsample = (40, 40)
+    bz, h, w, nc, p = feature_conv.shape
+    output_cam = []
+    
+    global_feature = global_feature[0].squeeze()
+    feature_conv = feature_conv[0].squeeze()
+    # feature_conv = feature_conv
+    
+    for idx in class_idx:
+        cam = feature_conv.dot(global_feature[idx])
+        cam = cam.sum(axis=-1)
         cam = cam.reshape(h, w)
         cam = normalize(cam)
        
@@ -133,11 +159,16 @@ def load_data():
     cls2 = torch.softmax(cls2, dim=-1).tolist()
     labels2 = {k: float(v) for k, v in enumerate(cls2)}
 
-    params = list(capsule.parameters())
-    weight_softmax = np.squeeze(params[-3].tolist())
-    features_map = np.array(capsule.features_blobs[-1])
+    # params = list(capsule.parameters())
+    # for param in params:
+    #     print(param.shape)
+    # weight_softmax = np.squeeze(params[-1].tolist())
+    for feature_map in capsule.features_blobs:
+        print(feature_map.shape)
+    features_map = np.array(capsule.features_blobs[-2])
+    global_map = np.array(capsule.features_blobs[-1])
 
-    activation_map2 = CapsuleCAM(img, features_map, weight_softmax, class_idx=[np.argmax(cls2)])
+    activation_map2 = CapsuleAttentionMap(img, features_map, global_map, class_idx=[np.argmax(cls2)])
 
     return img, "class {}".format(y), labels, labels2, activation_map, activation_map2
 
@@ -147,8 +178,8 @@ with gr.Blocks() as demo:
     with gr.Row():
         with gr.Column():
             im = gr.Image().style(width=200, height=200)
-            capsule_explain = gr.Image(label="Capsule Activation map").style(width=300, height=300)
             conv_explain = gr.Image(label= "Activation map").style(width=300, height=300)
+            capsule_explain = gr.Image(label="Capsule Activation map").style(width=300, height=300)
         with gr.Column():
             cls_box = gr.Textbox(label="True Image class")
             label_conv = gr.Label(label="Convolutional Model", num_top_classes=4)

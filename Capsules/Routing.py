@@ -114,8 +114,9 @@ def caps_Dynamic_routing(u, a_in, iters, g=None):
         if i != iters - 1:
             r = r + (u * v).sum(dim=-1, keepdim=True)#consine similarity u*v
             
-    a_out = torch.norm(v, dim=-1)
-    a_out = torch.sigmoid(a_out)
+    a_out = torch.norm(v, dim=-1, keepdim=True)
+   
+    # a_out = torch.sigmoid(a_out)
     v = v.view(b, h, w, C, psize)
     a_out = a_out.view(b, h, w, C, 1)
     return v, a_out
@@ -171,3 +172,8 @@ def caps_Fuzzy_routing(V, a_in, beta_a, _lambda, m, iters, g=None):
     a = a.view(b, h, w, C, 1)
     return g, a
 
+if __name__ == '__main__':
+
+    u = torch.rand((2, 4, 4, 32, 32, 16))
+    a_in = torch.rand((2, 4, 4, 32, 1))
+    caps_Dynamic_routing(u, a_in, 3)
