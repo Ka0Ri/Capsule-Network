@@ -288,7 +288,7 @@ if __name__ == "__main__":
         logger=neptune_logger,
         max_epochs=PARAMS['training_settings']["n_epoch"],
         accelerator="gpu",
-        devices=[0],
+        devices=[1],
         callbacks=[checkpoint_callback]
     )
 

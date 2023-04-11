@@ -159,12 +159,6 @@ def load_data():
     cls2 = torch.softmax(cls2, dim=-1).tolist()
     labels2 = {k: float(v) for k, v in enumerate(cls2)}
 
-    # params = list(capsule.parameters())
-    # for param in params:
-    #     print(param.shape)
-    # weight_softmax = np.squeeze(params[-1].tolist())
-    for feature_map in capsule.features_blobs:
-        print(feature_map.shape)
     features_map = np.array(capsule.features_blobs[-2])
     global_map = np.array(capsule.features_blobs[-1])
 
@@ -187,30 +181,7 @@ with gr.Blocks() as demo:
             btn = gr.Button(value="Load random image")
     btn.click(run, inputs=None, outputs=[im, cls_box, label_conv, label_capsule, conv_explain, capsule_explain])
 
-# def load_test():
-#     import time
-#     while(True):
-#         index = random.randint(0, 1000)
-#         x, y = Test_data[index]
-#         img = transforms.ToPILImage()(x)
-#         yield img
-#         time.sleep(1)
 
-
-# with gr.Blocks() as demo:
-
-#     gr.Markdown("## Image Examples")
-#     with gr.Row():
-#         with gr.Column():
-#             im = gr.Image().style(width=200, height=200)
-#             capsule_explain = gr.Image(label="Capsule Activation map").style(width=300, height=300)
-#             conv_explain = gr.Image(label= "Activation map").style(width=300, height=300)
-#         with gr.Column():
-#             cls_box = gr.Textbox(label="True Image class")
-#             label_conv = gr.Label(label="Convolutional Model", num_top_classes=4)
-#             label_capsule = gr.Label(label="Capsule model", num_top_classes=4)
-#             btn = gr.Button(value="Load random image")
-#     btn.click(load_test, inputs=None, outputs=[im])
 
 if __name__ == "__main__":
     # load_data()

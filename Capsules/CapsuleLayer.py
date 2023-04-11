@@ -29,25 +29,20 @@ class PrimaryCaps(nn.Module):
         super(PrimaryCaps, self).__init__()
         self.pose = nn.Conv2d(in_channels=A, out_channels=B*P*P,
                             kernel_size=K, stride=stride, bias=False)
-        self.a = nn.Conv2d(in_channels=A, out_channels=B,
-                            kernel_size=K, stride=stride, bias=False)
+        
         self.B = B
 
     def forward(self, x, sq=False):
-       
 
         p = self.pose(x)
         b, c, h, w, = p.shape
         p = p.permute(0, 2, 3, 1)
         p = p.view(b, h, w, self.B, -1)
-        a = self.a(x)
-        a = a.permute(0, 2, 3, 1)
-        a = a.view(b, h, w, self.B, 1)
-        a = torch.sigmoid(a)
-
+       
         if(sq):
             p = squash(p)
-       
+
+        a = torch.norm(p, dim=-1, keepdim=True)
         return p, a
     
 

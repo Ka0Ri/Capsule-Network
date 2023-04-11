@@ -53,7 +53,7 @@
         "affNist": {
                 "architect_settings": 
                 {
-                        "shortcut": False,
+                        "shortcut": True,
                         "n_cls": 10,
                         "n_conv": 2,
                         "Conv1": {"in": 1,
@@ -89,11 +89,11 @@
                 "training_settings":
                 {
                         "lr": 0.001,
-                        "lr_step": 20,
+                        "lr_step": 10,
                         "lr_decay": 0.8,
                         "momentum": 0.9,
                         "weight_decay": 0.005,
-                        "n_epoch": 200,
+                        "n_epoch": 50,
                         "n_batch": 128,
                         "dataset": "affNist",
                         "center": False,
@@ -174,7 +174,7 @@
                         "routing": {"type": "dynamic",
                                 "params" : [3]}
                 },
-                "model_path": "model/test/test.ckpt"
+                "model_path": "model/test/test2.ckpt"
         },
 
 }

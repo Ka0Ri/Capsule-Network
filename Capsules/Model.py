@@ -6,7 +6,7 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 from torchvision import models
 import numpy as np
-from CapsuleLayer1 import ConvCaps, PrimaryCaps, Caps_Dropout, LocapBlock, glocapBlock
+from CapsuleLayer import ConvCaps, PrimaryCaps, Caps_Dropout, LocapBlock, glocapBlock
 
 
 #-----lOSS FUNCTION------
@@ -23,7 +23,7 @@ class MarginLoss(nn.Module):
 
     def forward(self, output, target):
         # output, 128 x 10
-        # print(output.size())
+      
         gt = Variable(torch.zeros(output.size(0), self.num_classes), requires_grad=False).cuda()
         gt = gt.scatter_(1, target.unsqueeze(1), 1)
         pos_part = F.relu(self.pos - output, inplace=True) ** 2
@@ -212,13 +212,14 @@ class CoreArchitect(nn.Module):
         for i in range(0, self.n_caps):
             p_cap, l = self.caps_layers[i](l)
             p_caps.append(p_cap)
+            print(p_cap.shape)
+            print(l.shape)
             
-           
         g = l.squeeze()
+        
             
-        for i in range(self.n_routs):
-            for i in range(self.n_caps):
-                a, g = self.dynamic_layers[i](p_caps[i], g, self.routing_config['type'],  *self.routing_config['params'])
+        for i in range(self.n_caps):
+            a, g = self.dynamic_layers[i](p_caps[i], g, self.routing_config['type'],  *self.routing_config['params'])
 
         return a
     
@@ -240,48 +241,40 @@ class CoreArchitect(nn.Module):
 
 if __name__  == "__main__":
     architect_settings = {
-    'n_cls': 10,
-    'n_conv': 1,
-    'Conv1': {'in': 1,
-              'out': 64,
-              'k': 5,
-              's': 2,
-              'p': 0},
-    'Conv2': {'in': 1,
-              'out': 128,
-              'k': 5,
-              's': 2,
-              'p': 0},
-    'Conv3': {'in': 128,
-              'out': 128,
-              'k': 5,
-              's': 2,
-              'p': 0},
-    'PrimayCaps': {'in': 64,
-                   'out':32,
-                   'k': 1,
-                   's': 1,
-                   'p': 0},
-    'n_caps': 3,
-    'cap_dims': 4,
-    'n_routing': 3,
-    'Caps1': {'in': 32,
-              'out': 32,
-              'k': (3, 3),
-              's': (2, 2)},
-    'Caps2': {'in': 32,
-              'out': 32,
-              'k': (3, 3),
-              's': (1, 1)},
-    'Caps3': {'in': 32,
-              'out': 10,
-              'k': (3, 3),
-              's': (1, 1)},
-    'routing': {'type': "fuzzy",
-                'params' : [3, 10e-3, 2]}
-    }
-    model = CapNets(model_configs=architect_settings).cuda()
+            "shortcut": True,
+            "n_cls": 10,
+            "n_conv": 2,
+            "Conv1": {"in": 1,
+                    "out": 64,
+                    "k": 5,
+                    "s": 2,
+                    "p": 0},
+            "Conv2": {"in": 64,
+                    "out": 128,
+                    "k": 5,
+                    "s": 2,
+                    "p": 0},
+            "PrimayCaps": {"in": 128,
+                    "out": 32,
+                    "k": 1,
+                    "s": 1,
+                    "p": 0},
+            "n_caps": 2,
+            "cap_dims": 4,
+            "n_routing": 2,
+            "Caps1": {"in": 32,
+                    "out": 16,
+                    "k": [3, 3],
+                    "s": [2, 2]},
+            "Caps2": {"in": 16,
+                    "out": 10,
+                    "k": [3, 3],
+                    "s": [1, 1]},
+            "routing": {"type": "dynamic",
+                    "params" : [3]}
+            }
+    model = CoreArchitect(model_configs=architect_settings).cuda()
     # model = CoreArchitect(architect_settings).cuda()
-    input_tensor = torch.rand(2, 1, 28, 28).cuda()
+    input_tensor = torch.rand(2, 1, 40, 40).cuda()
     a = model(input_tensor)
     print(a)
