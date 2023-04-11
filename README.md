@@ -24,11 +24,17 @@ Examples of training Capsule Network can be found in [ReadDataset.py](Capsules/R
 - main.py: Our main module is [CapsuleModel](Capsules/main.py#L80) that based on [pytorch-lightning](https://lightning.ai/pages/open-source/) and logged by [neptune-ai](https://neptune.ai/)
 
 ![alt text](image/run.png)
+
+```
+python Capsules/main.py
+```
 #
 
 ## Testing Interface
 We deploy (demo) our model using [Gradio](https://gradio.app/), which supports  activation map visualization and see the results
-
+```
+python Capsules/Interface.py
+```
 ![alt text](image/gradio.png)
 #
 ## list of papers
