@@ -7,6 +7,17 @@
 - Pytorch framwork: 1.12.1, pytorch-lightning
 - Others: numpy, opencv, scipy
 - dashboard: neptune ai (for training), gradio (for testing)
+## Environments Settings
+- Install [Anaconda](https://www.anaconda.com/)
+- create a new environment:
+```
+conda create --name=Capsule python=3.9
+conda activate Capsule
+```
+- Install dependencies: 
+```
+sh env-create.sh
+```
 #
 We reimplement Capsule Layers in 3 files: Routing.py, CapsuleLayer.py, and Model.py
 - Routing.py: Implement 3 routing methods: [EM](Capsules/Routing.py#L23), [Dynamic](Capsules/Routing.py#84), and [Fuzzy](Capsules/Routing.py#L125). Algorithm's details are provided in [pdf](Algorithm.pdf)
@@ -36,6 +47,7 @@ We deploy (demo) our model using [Gradio](https://gradio.app/), which supports  
 python Capsules/Interface.py
 ```
 ![alt text](image/gradio.png)
+
 #
 ## list of papers
 - [EM routing](https://openreview.net/pdf?id=HJWLfGWRb)
