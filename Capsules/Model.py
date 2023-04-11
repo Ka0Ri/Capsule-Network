@@ -239,6 +239,7 @@ class CoreArchitect(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
 
+
 if __name__  == "__main__":
     architect_settings = {
             "shortcut": True,
