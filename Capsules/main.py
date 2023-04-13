@@ -27,17 +27,22 @@ class CapsuleModel(LightningModule):
             self.model = ConvNeuralNet(model_configs=PARAMS['architect_settings'])
         elif(PARAMS['architect_settings']['shortcut'] == "eff"):
             self.model = EffCapNets(model_configs=PARAMS['architect_settings'])
-        elif(PARAMS['architect_settings']['shortcut']):
-            self.model = CoreArchitect(model_configs=PARAMS['architect_settings'])
-        else:
+        elif(PARAMS['architect_settings']['shortcut'] == "shortcut"):
+            self.model = ShortcutCapsNet(model_configs=PARAMS['architect_settings'])
+        elif(PARAMS['architect_settings']['shortcut'] == "base"):
             self.model = CapNets(model_configs=PARAMS['architect_settings'])
+        else:
+            print("Model is not implemented yet")
             
 
-        if(PARAMS['architect_settings']['shortcut'] == "convolution"):
-        # if(True):
+        if(PARAMS['architect_settings']['loss'] == "ce"):
             self.loss = CrossEntropyLoss(num_classes=PARAMS['architect_settings']['n_cls'])
-        else:
+        elif(PARAMS['architect_settings']['loss'] == "spread"):
             self.loss = SpreadLoss(num_classes=PARAMS['architect_settings']['n_cls'])
+        elif(PARAMS['architect_settings']['loss'] == "margin"):
+            self.loss = SpreadLoss(num_classes=PARAMS['architect_settings']['n_cls'])
+        elif(PARAMS['architect_settings']['loss'] == "margin"):
+            
 
         self.training_step_outputs = []
         self.validation_step_outputs = []

@@ -10,6 +10,21 @@ from CapsuleLayer import ConvCaps, PrimaryCaps, Caps_Dropout, LocapBlock, glocap
 
 
 #-----lOSS FUNCTION------
+
+class LossFunction(nn.Module):
+    """
+    Loss function
+    """
+    def __init__(self):
+        super(LossFunction, self).__init__()
+        self.MSE = nn.MSELoss(size_average=True)
+
+    def forward(self, labels, seg, bce_weight=0.5):
+        bce = F.binary_cross_entropy_with_logits(seg, labels)
+        # loss = self.MSE(labels, seg)
+     
+        return bce
+
 class MarginLoss(nn.Module):
     """
     Loss = T*max(0, m+ - |v|)^2 + lambda*(1-T)*max(0, |v| - max-)^2 + alpha*|x-y|
@@ -150,13 +165,13 @@ class ConvNeuralNet(nn.Module):
 
 
 #-----Shortcut routing model------
-class CoreArchitect(nn.Module):
+class ShortcutCapsNet(nn.Module):
     """
     Shortcut Routing Network
     - model_configs: Configurations for model
     """
     def __init__(self, model_configs):
-        super(CoreArchitect, self).__init__()
+        super(ShortcutCapsNet, self).__init__()
         
         self.num_classes = model_configs['n_cls']
         self.primary_cap_num = model_configs['PrimayCaps']['out']

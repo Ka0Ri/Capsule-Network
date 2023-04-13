@@ -4,11 +4,49 @@ from torchvision.datasets import CIFAR10, SVHN
 from torchvision import transforms
 
 import numpy as np
-import os
+import os, glob
 import struct
 import cv2
 import scipy
-path = os.path.dirname(os.getcwd())
+from skimage.io import imread
+from skimage.transform import resize
+
+
+def normalize_image(image):
+    xmin = np.min(image)
+    xmax = np.max(image)
+    return (image - xmin)/ (xmax - xmin)
+
+class LungCTscan(Dataset):
+    def __init__(self, data_dir, transform=None):
+        self.img_list = sorted(glob.glob(data_dir + '/2d_images/*.tif'))
+        self.mask_list = sorted(glob.glob(data_dir + '/2d_masks/*.tif'))
+        self.transform = transform
+        self.image_size = 256
+        
+    def __len__(self):
+        return len(self.img_list)
+        
+    def __getitem__(self, idx):
+        image_path = self.img_list[idx]
+        mask_path = self.mask_list[idx]
+
+        # load image
+        image = imread(image_path)
+        image = normalize_image(image)
+        # resize image with 1 channel
+        image = resize(image, output_shape=(self.image_size, self.image_size), preserve_range=True)
+
+        # load image
+        mask = imread(mask_path) / 255.0
+        # resize mask with 1 channel
+        mask = resize(mask, output_shape=(self.image_size, self.image_size), preserve_range=True)
+        image, mask = np.array(image[..., np.newaxis], dtype=np.float32), np.array(mask[..., np.newaxis], dtype=np.float32)
+        
+        if self.transform is not None:
+            image = self.transform(image)
+            mask = self.transform(mask)
+        return image, mask
 
 
 class SmallNorbread(Dataset):

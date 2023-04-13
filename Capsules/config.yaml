@@ -1,9 +1,9 @@
 {
         # hyperparams for training
-        "smallNorb": {
+        "config1": {
                 "architect_settings": 
                 {
-                        "shortcut": "convolution",
+                        "model": "convolution",
                         "n_cls": 5,
                         "n_conv": 2,
                         "Conv1": {"in": 1,
@@ -50,10 +50,10 @@
                 }
         },
 
-        "affNist": {
+        "config2": {
                 "architect_settings": 
                 {
-                        "shortcut": "eff",
+                        "model": "eff",
                         "n_cls": 10,
                         "n_conv": 2,
                         "Conv1": {"in": 1,
@@ -82,8 +82,8 @@
                                 "out": 10,
                                 "k": [3, 3],
                                 "s": [1, 1]},
-                        "routing": {"type": "em",
-                                "params" : [3, 0.01]}
+                        "routing": {"type": "dynamic",
+                                "params" : [3]}
                 },
 
                 "training_settings":
@@ -97,14 +97,14 @@
                         "n_batch": 128,
                         "dataset": "affNist",
                         "center": False,
-                        "ckpt_path": "affNist-eff-em",
+                        "ckpt_path": "affNist-eff-dynamic",
                 }
         },
         # hyperparams for testing
-        "gradio": {
+        "demo-conv": {
                 "architect_settings": 
                 {
-                        "shortcut": "convolution",
+                        "model": "convolution",
                         "n_cls": 10,
                         "n_conv": 2,
                         "Conv1": {"in": 1,
@@ -139,10 +139,10 @@
                 "model_path": "model/centerNist-conv/epoch=75-step=29716.ckpt"
         },
 
-        "gradio1": {
+        "demo-cap1": {
                 "architect_settings": 
                 {
-                        "shortcut": False,
+                        "model": "base",
                         "n_cls": 10,
                         "n_conv": 2,
                         "Conv1": {"in": 1,
@@ -175,6 +175,43 @@
                                 "params" : [3]}
                 },
                 "model_path": "model/test/test2.ckpt"
+        },
+        "gradio2": {
+                "architect_settings": 
+                {
+                        "model": "eff",
+                        "n_cls": 10,
+                        "n_conv": 2,
+                        "Conv1": {"in": 1,
+                                "out": 64,
+                                "k": 5,
+                                "s": 2,
+                                "p": 0},
+                        "Conv2": {"in": 64,
+                                "out": 128,
+                                "k": 5,
+                                "s": 2,
+                                "p": 0},
+                        "PrimayCaps": {"in": 128,
+                                "out": 32,
+                                "k": 1,
+                                "s": 1,
+                                "p": 0},
+                        "n_caps": 2,
+                        "cap_dims": 4,
+                        "n_routing": 2,
+                        "Caps1": {"in": 32,
+                                "out": 32,
+                                "k": [3, 3],
+                                "s": [2, 2]},
+                        "Caps2": {"in": 32,
+                                "out": 10,
+                                "k": [3, 3],
+                                "s": [1, 1]},
+                        "routing": {"type": "em",
+                                "params" : [3, 0.01]}
+                },
+                "model_path": "model/affNist-eff-em/epoch=16-step=6647.ckpt"
         },
 
 }

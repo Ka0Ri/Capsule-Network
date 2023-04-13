@@ -5,3 +5,4 @@ python -m pip install gradio
 python -m pip install opencv-python
 python -m pip install scikit-learn
 python -m pip install scipy
+python -m pip install scikit-image

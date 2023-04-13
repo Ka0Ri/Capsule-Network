@@ -22,7 +22,7 @@ with open("Capsules/config.yaml", 'r') as stream:
 # model = CapsuleModel(PARAMS)
 convmodel = CapsuleModel.load_from_checkpoint(PARAMS["gradio"]["model_path"], PARAMS=PARAMS["gradio"])
 convmodel.eval()
-capsule = CapsuleModel.load_from_checkpoint(PARAMS["gradio1"]["model_path"], PARAMS=PARAMS["gradio1"])
+capsule = CapsuleModel.load_from_checkpoint(PARAMS["gradio2"]["model_path"], PARAMS=PARAMS["gradio2"])
 # disable randomness, dropout, etc...
 capsule.eval()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
 
