@@ -53,7 +53,7 @@
         "affNist": {
                 "architect_settings": 
                 {
-                        "shortcut": True,
+                        "shortcut": "eff",
                         "n_cls": 10,
                         "n_conv": 2,
                         "Conv1": {"in": 1,
@@ -82,8 +82,8 @@
                                 "out": 10,
                                 "k": [3, 3],
                                 "s": [1, 1]},
-                        "routing": {"type": "dynamic",
-                                "params" : [3]}
+                        "routing": {"type": "em",
+                                "params" : [3, 0.01]}
                 },
 
                 "training_settings":
@@ -97,7 +97,7 @@
                         "n_batch": 128,
                         "dataset": "affNist",
                         "center": False,
-                        "ckpt_path": "test",
+                        "ckpt_path": "affNist-eff-em",
                 }
         },
         # hyperparams for testing

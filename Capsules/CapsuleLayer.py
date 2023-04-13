@@ -55,9 +55,6 @@ class ConvCaps(nn.Module):
         K: kernel size of convolution
         P: size of pose matrix is P*P
         stride: stride of convolution
-        iters: number of EM iterations
-        coor_add: use scaled coordinate addition or not
-        w_shared: share transformation matrix across w*h.
     Shape:
         input:  (*, h,  w, B, P*P) & (*, h,  w, B, 1) 
         output: (*, h', w', C, P*P) & (*, h', w', C,  1)
@@ -168,36 +165,35 @@ class Caps_Dropout(nn.Module):
 class CapLayer(nn.Module):
     """
     2D Capsule Convolution as conventional 3D convolution to predict higher capsules
-        num_in_caps: number of capsule in L layer
-        num_out_caps: number of capsule in L + 1 layer
-        kernel_size: 2D kernel size
-        stride: stride when doing convolutional
-        in_dim: input size of a capsule
-        out_dim: output size of a capsule
+        B: number of capsule in L layer
+        C: number of capsule in L + 1 layer
+        K: 2D kernel size
+        S: stride when doing convolutional
+        P: size of a capsule
         groups: group convolution
     """
-    def __init__(self, num_in_caps, num_out_caps, kernel_size, stride, out_dim, in_dim, groups=1, bias=True):
+    def __init__(self, B, C, K, S, P, groups=1, bias=True):
         super(CapLayer, self).__init__()
 
-        self.num_out_caps = num_out_caps
-        self.out_dim = out_dim
-        self.num_in_caps = num_in_caps
-        self.in_dim = in_dim
+        self.num_out_caps = C
+        self.out_dim = P
+        self.num_in_caps = B
+        self.in_dim = P
 
-        assert (in_dim ** 2) % out_dim == 0
-        k = in_dim ** 2 // out_dim
+        assert (P ** 2) % P == 0
+        k = P ** 2 // P
 
-        self.W = nn.Conv3d(in_channels = num_in_caps, out_channels = num_out_caps * out_dim, 
-            kernel_size = (k , kernel_size[0], kernel_size[1]), stride=(k, stride[0], stride[1]), groups=groups, bias=bias)
+        self.W = nn.Conv3d(in_channels = B, out_channels = C * P, 
+            kernel_size = (k , K[0], K[1]), stride=(k, S[0], S[1]), groups=groups, bias=bias)
 
     def forward(self, x, sq=False):
         """
             Input:
-                x: (n, C, D, h, w) is input capsules
+                x: (n, B, P, h, w) is input capsules
                 C: number of capsules, D: dimmension of a capsule
                 h, w: spatial size
             return:
-                v: (n, C', D', h', w') is output capsules
+                v: (n, C, P, h', w') is output capsules
         """
         s = self.W(x)
         n, C, D, h, w = s.size()
@@ -216,24 +212,22 @@ class LocapBlock(nn.Module):
     Output of a local block is 2 capsules: pre-voting capsules (work as skip-connection), and coarse capsules (a coarse prediction for a local capsule)
     Implemented by CapLayer module, so the arguments are set according to CapLayer's arguments
     """
-    def __init__(self, num_in_caps, num_out_caps, kernel_size, stride, out_dim, in_dim):
+    def __init__(self, B, C, K, stride, P):
         super(LocapBlock, self).__init__()
 
-        self.dw = CapLayer(num_in_caps, num_in_caps, kernel_size, stride, 
-                            out_dim, in_dim, groups=num_in_caps, bias=False)
-        self.pw = CapLayer(num_in_caps, num_out_caps, kernel_size=(1,1), stride=(1,1), 
-                            out_dim=out_dim, in_dim=in_dim, bias=False)
+        self.dw = CapLayer(B, B, K, stride, P, groups=B, bias=False)
+        self.pw = CapLayer(B, C, K=(1,1), S=(1,1), P=P, bias=False)
         # self.pw = nn.Conv3d(num_in_caps, num_out_caps, kernel_size=1, stride=1, bias=False)
 
 
     def forward(self, x):
         """
             Input:
-                x: (n, C, D, h, w) is input capsules
+                x: (n, B, P, h, w) is input capsules
                 C: number of capsules, D: dimmension of a capsule
                 h, w: spatial size
             return:
-                v: (n, C', D', h', w') is output capsules
+                v: (n, C, P, h', w') is output capsules
         """
         prevoted_caps = self.dw(x)
         coarse_caps = self.pw(prevoted_caps)
@@ -241,36 +235,35 @@ class LocapBlock(nn.Module):
         return prevoted_caps, coarse_caps
     
 class glocapBlock(nn.Module):
-    def __init__(self, num_in_caps, num_out_caps, P):
+    def __init__(self, B, C, P):
         """
         Global Capsule Block where routing algorithms will operate to calculate th final global capsule
         It can be understaned as attention from final layer to early layers
         
         """
         super(glocapBlock, self).__init__()
-        self.n_classes = num_out_caps
-        self.in_channels = num_in_caps
-        n = self.n_classes * num_out_caps
+        self.n_classes = C
+        self.in_channels = B
         self.eps = 1e-06
         self.P = P
         
-        self.weight = nn.Parameter(torch.randn(1, num_in_caps, 1, num_out_caps, self.P, self.P))
-        self.beta_a = nn.Parameter(torch.zeros(num_out_caps, 1))
-        self.beta_u = nn.Parameter(torch.zeros(num_out_caps, 1))
+        self.weight = nn.Parameter(torch.randn(1, B, 1, C, self.P, self.P))
+        self.beta_a = nn.Parameter(torch.zeros(C, 1))
+        self.beta_u = nn.Parameter(torch.zeros(C, 1))
         
     def forward(self, l, g, routing="dynamic", *argv):
         """
         Routing
         input:
-        -l: capsules at an intermediate layer (N, C_in, D, W, H)
-        N: batch size, C_in: number of channels, D: capsule dim
+        -l: capsules at an intermediate layer (N, B, P, W, H)
+        N: batch size, B: number of channels, P: capsule dim
         W, H: spatial dim
-        -g: global capsule (N, C_out, D)
+        -g: global capsule (N, C, P)
         -routing: routing method
         -argv: arguments for routing
         output: 
         -g: updated global capsule
-        -b: attention scores (N, C_out, C_in)
+        -a: scores (N, C)
         """
 
         assert routing in ['dynamic', 'em', 'fuzzy'], "Routing method is not implemented yet!"
@@ -298,4 +291,91 @@ class glocapBlock(nn.Module):
         g = g.squeeze()
         a = a.squeeze()
 
-        return a, g
+        return g, a
+    
+class EffCapLayer(nn.Module):
+    """
+       Efficient depth-wise convolution to predict higher capsules
+    Input of a local block is a capsule at Lth layer
+    Output of a local block is a capsule at (L+1)th layer
+    Implemented by CapLayer module, so the arguments are set according to CapLayer's arguments
+    This Layer contains 2 operations, Depth-wise convolution acts on each Capsule Styles (channels) without routing
+    and Pointwise convolution acts on each unit with routing mechanism.
+        B: number of capsule in L layer
+        C: number of capsule in L + 1 layer
+        K: 2D kernel size
+        S: stride when doing convolutional
+        P: size of a capsule
+        groups: group convolution
+    """
+    def __init__(self, B, C, K, S, P):
+        super(EffCapLayer, self).__init__()
+
+        self.P = P
+        self.C = C
+        self.dw = CapLayer(B, B, K, S, P, groups=B, bias=False)
+        self.a_dw = nn.Sequential(
+            nn.Conv2d(in_channels=B, out_channels=B, kernel_size=K, stride=S, groups=B, bias=False),
+            nn.ReLU(),
+            #  nn.BatchNorm2d(B)
+        )
+        
+        self.weight = nn.Parameter(torch.randn(1, B, 1, 1, C, P, P))
+        self.beta_a = nn.Parameter(torch.zeros(C, 1))
+        self.beta_u = nn.Parameter(torch.zeros(C, 1))
+
+        
+    def forward(self, x, a, routing, *argv):
+        """  
+            Input:
+                x (*, h, w, B, P*P): is input capsules
+                a: activation (*, h, w, B, 1)
+                B: number of capsules, P * P: dimmension of a capsule
+                h, w: spatial size
+                routing: routing method
+                argv[0]: number of iteration
+                argv[1]: lambda for fuzzy/em routing
+                argv[2]: m for fuzzy routing
+            return:
+                p_out: (*, h', w', C, P*P) is output capsules
+                a_out: (*, h', w', C,  1)
+            h', w' is computed the same way as convolution layer
+        """
+
+        assert routing in ['dynamic', 'em', 'fuzzy'], "Routing method is not implemented yet!"
+        assert len(argv) > 0, "number of routing iterations need to be re-defined"
+        if(routing == "fuzzy"):
+            assert len(argv) == 3, "fuzzy routing need 3 arguments, 0: number of routings, 1: lambda, 2: m"
+        if(routing == "em"):
+            assert len(argv) == 2, "em routing need 2 arguments, 0: number of routings, 1: lambda"
+
+        x = x.permute(0, 3, 4, 1, 2)
+        u = self.dw(x)
+        N, B, D, W, H = u.size()
+        u = u.permute(0, 1, 3, 4, 2).view(N, B, W, H, self.P, self.P)
+        v = u.unsqueeze(4) @ self.weight
+        v = v.view(N, W, H, B, self.C, D)
+       
+        a = a.squeeze().permute(0, 3, 1, 2)
+        a = self.a_dw(a)
+        a = a.permute(0, 2, 3, 1).unsqueeze(4)
+        
+      
+        if(routing == 'em'):
+            p_out, a_out = caps_EM_routing(v, a, self.beta_u, self.beta_a, argv[1], argv[0], g=None)
+        elif(routing == 'dynamic'):
+            p_out, a_out = caps_Dynamic_routing(v, a, argv[0], g=None)
+        if(routing == 'fuzzy'):
+            p_out, a_out = caps_Fuzzy_routing(v, a, self.beta_a, argv[1], argv[2], argv[0], g=None)
+      
+ 
+        return p_out, a_out
+    
+if __name__ == '__main__':
+
+    test_layer = EffCapLayer(B = 32, C = 8, K = (5, 5), S = (2, 2), P = 4)
+    p = torch.rand(2, 10, 10, 32, 16)
+    a = torch.rand(2, 10, 10, 32, 1)
+    p_out, a_out = test_layer(p, a, 'fuzzy', *[3, 0.01, 2])
+    print(a_out.shape)
+   

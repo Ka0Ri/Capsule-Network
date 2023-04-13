@@ -25,13 +25,16 @@ class CapsuleModel(LightningModule):
 
         if(PARAMS['architect_settings']['shortcut'] == "convolution"):
             self.model = ConvNeuralNet(model_configs=PARAMS['architect_settings'])
+        elif(PARAMS['architect_settings']['shortcut'] == "eff"):
+            self.model = EffCapNets(model_configs=PARAMS['architect_settings'])
         elif(PARAMS['architect_settings']['shortcut']):
             self.model = CoreArchitect(model_configs=PARAMS['architect_settings'])
         else:
             self.model = CapNets(model_configs=PARAMS['architect_settings'])
+            
 
-        # if(PARAMS['architect_settings']['shortcut'] == "convolution"):
-        if(True):
+        if(PARAMS['architect_settings']['shortcut'] == "convolution"):
+        # if(True):
             self.loss = CrossEntropyLoss(num_classes=PARAMS['architect_settings']['n_cls'])
         else:
             self.loss = SpreadLoss(num_classes=PARAMS['architect_settings']['n_cls'])
@@ -288,7 +291,7 @@ if __name__ == "__main__":
         logger=neptune_logger,
         max_epochs=PARAMS['training_settings']["n_epoch"],
         accelerator="gpu",
-        devices=[1],
+        devices=[0],
         callbacks=[checkpoint_callback]
     )
 

@@ -6,7 +6,7 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 from torchvision import models
 import numpy as np
-from CapsuleLayer import ConvCaps, PrimaryCaps, Caps_Dropout, LocapBlock, glocapBlock
+from CapsuleLayer import ConvCaps, PrimaryCaps, Caps_Dropout, LocapBlock, glocapBlock, EffCapLayer
 
 
 #-----lOSS FUNCTION------
@@ -189,9 +189,8 @@ class CoreArchitect(nn.Module):
         self.dynamic_layers = nn.ModuleList()
         for i in range(self.n_caps):
             caps = model_configs['Caps' + str(i + 1)]
-            self.caps_layers.append(LocapBlock(num_in_caps=caps['in'], num_out_caps=caps['out'], 
-                                               kernel_size=caps['k'],stride=caps['s'],out_dim=self.cap_dim, in_dim=self.cap_dim))
-            self.dynamic_layers.append(glocapBlock(num_in_caps=caps['in'], num_out_caps=self.num_classes, P=self.cap_dim))
+            self.caps_layers.append(LocapBlock(B=caps['in'], C=caps['out'], K=caps['k'],stride=caps['s'],P=self.cap_dim))
+            self.dynamic_layers.append(glocapBlock(B=caps['in'], C=self.num_classes, P=self.cap_dim))
             
     
         #kaiming initialization
@@ -212,14 +211,12 @@ class CoreArchitect(nn.Module):
         for i in range(0, self.n_caps):
             p_cap, l = self.caps_layers[i](l)
             p_caps.append(p_cap)
-            print(p_cap.shape)
-            print(l.shape)
             
         g = l.squeeze()
         
             
         for i in range(self.n_caps):
-            a, g = self.dynamic_layers[i](p_caps[i], g, self.routing_config['type'],  *self.routing_config['params'])
+            g, a = self.dynamic_layers[i](p_caps[i], g, self.routing_config['type'],  *self.routing_config['params'])
 
         return a
     
@@ -237,6 +234,57 @@ class CoreArchitect(nn.Module):
                 nn.init.normal_(m.weight, std=1e-3)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
+
+
+class EffCapNets(nn.Module):
+    """
+    """
+    def __init__(self, model_configs):
+        """
+        Efficient Capsule Network
+        - model_configs: Configurations for model
+        """
+        super(EffCapNets, self).__init__()
+
+        self.cap_dim = model_configs['cap_dims']
+        self.n_caps = model_configs['n_caps']
+        self.routing_config = model_configs['routing']
+
+        self.conv_layers = []
+        for i in range(model_configs['n_conv']):
+            conv = model_configs['Conv' + str(i + 1)]
+            self.conv_layers.append(nn.Sequential(
+                nn.Conv2d(conv['in'], conv['out'], conv['k'], conv['s'], conv['p']),
+                nn.ReLU(),
+                nn.BatchNorm2d(conv['out']),
+            ))
+        self.conv_layers = nn.Sequential(*self.conv_layers)
+        
+        primary_caps = model_configs['PrimayCaps']
+        self.primary_caps = PrimaryCaps(primary_caps['in'], primary_caps['out'], 
+                            primary_caps['k'], primary_caps['s'], P=self.cap_dim)
+
+        self.caps_layers = nn.ModuleList()
+        for i in range(self.n_caps):
+            caps = model_configs['Caps' + str(i + 1)]
+            self.caps_layers.append(EffCapLayer(caps['in'], caps['out'], caps['k'], caps['s'], self.cap_dim))
+           
+
+    def forward(self, x):
+       
+        x = self.conv_layers(x)
+        if(self.routing_config['type'] == "dynamic"): 
+            pose, a = self.primary_caps(x, sq=True)
+        else:
+            pose, a = self.primary_caps(x, sq=False)
+
+        for i in range(0, self.n_caps):
+            pose, a = self.caps_layers[i](pose, a, self.routing_config['type'], *self.routing_config['params'])
+           
+        a = a.squeeze()
+        pose = pose.squeeze()
+   
+        return a
 
 
 
@@ -274,7 +322,8 @@ if __name__  == "__main__":
             "routing": {"type": "dynamic",
                     "params" : [3]}
             }
-    model = CoreArchitect(model_configs=architect_settings).cuda()
+    # model = EffCapNets(model_configs=architect_settings).cuda()
+    model = CapNets(model_configs=architect_settings).cuda()
     # model = CoreArchitect(architect_settings).cuda()
     input_tensor = torch.rand(2, 1, 40, 40).cuda()
     a = model(input_tensor)
