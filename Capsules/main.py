@@ -12,54 +12,52 @@ from pytorch_lightning.loggers import NeptuneLogger
 
 
 
-with open("Capsules/config.yaml", 'r') as stream:
-    try:
-        PARAMS = yaml.safe_load(stream)
-        PARAMS = PARAMS['affNist']
-    except yaml.YAMLError as exc:
-        print(exc)
+
 
 class CapsuleModel(LightningModule):
     def __init__(self, PARAMS):
         super().__init__()
 
-        if(PARAMS['architect_settings']['shortcut'] == "convolution"):
+        if(PARAMS['architect_settings']['model'] == "convolution"):
             self.model = ConvNeuralNet(model_configs=PARAMS['architect_settings'])
-        elif(PARAMS['architect_settings']['shortcut'] == "eff"):
+        elif(PARAMS['architect_settings']['model'] == "eff"):
             self.model = EffCapNets(model_configs=PARAMS['architect_settings'])
-        elif(PARAMS['architect_settings']['shortcut'] == "shortcut"):
+        elif(PARAMS['architect_settings']['model'] == "shortcut"):
             self.model = ShortcutCapsNet(model_configs=PARAMS['architect_settings'])
-        elif(PARAMS['architect_settings']['shortcut'] == "base"):
+        elif(PARAMS['architect_settings']['model'] == "base"):
             self.model = CapNets(model_configs=PARAMS['architect_settings'])
         else:
             print("Model is not implemented yet")
             
 
-        if(PARAMS['architect_settings']['loss'] == "ce"):
+        if(PARAMS['training_settings']['loss'] == "ce"):
             self.loss = CrossEntropyLoss(num_classes=PARAMS['architect_settings']['n_cls'])
-        elif(PARAMS['architect_settings']['loss'] == "spread"):
+        elif(PARAMS['training_settings']['loss'] == "spread"):
             self.loss = SpreadLoss(num_classes=PARAMS['architect_settings']['n_cls'])
-        elif(PARAMS['architect_settings']['loss'] == "margin"):
-            self.loss = SpreadLoss(num_classes=PARAMS['architect_settings']['n_cls'])
-        elif(PARAMS['architect_settings']['loss'] == "margin"):
-            
+        elif(PARAMS['training_settings']['loss'] == "margin"):
+            self.loss = MarginLoss(num_classes=PARAMS['architect_settings']['n_cls'])
+        elif(PARAMS['training_settings']['loss'] == "bce"):
+            self.loss = BCE()
+        else:
+            print("Loss is not implemented yet")
 
         self.training_step_outputs = []
         self.validation_step_outputs = []
         self.test_step_outputs = []
 
-        self.features_blobs = []
-
-        # for CAM visualization
-        if(PARAMS['architect_settings']['shortcut'] == "convolution"):
-            def hook_feature(module, input, output):
-                self.features_blobs.append(np.array(output.tolist()))
-            self.model.caps_layers[0].register_forward_hook(hook_feature)
-        else:
-            def hook_feature(module, input, output):
-                self.features_blobs.append(np.array(output[0].tolist()))
-            self.model.caps_layers[0].register_forward_hook(hook_feature)
-            self.model.caps_layers[1].register_forward_hook(hook_feature)
+        if(PARAMS['training_settings']['CAM']):
+            
+            self.features_blobs = []
+            # for CAM visualization
+            if(PARAMS['architect_settings']['model'] == "convolution"):
+                def hook_feature(module, input, output):
+                    self.features_blobs.append(np.array(output.tolist()))
+                self.model.caps_layers[0].register_forward_hook(hook_feature)
+            else:
+                def hook_feature(module, input, output):
+                    self.features_blobs.append(np.array(output[0].tolist()))
+                self.model.caps_layers[0].register_forward_hook(hook_feature)
+                self.model.caps_layers[1].register_forward_hook(hook_feature)
 
     def forward(self, x):
         return self.model(x)
@@ -164,6 +162,13 @@ class CapsuleModel(LightningModule):
 
 
 if __name__ == "__main__":
+
+    with open("Capsules/config.yaml", 'r') as stream:
+        try:
+            PARAMS = yaml.safe_load(stream)
+            PARAMS = PARAMS['affNist']
+        except yaml.YAMLError as exc:
+            print(exc)
 
     neptune_logger = NeptuneLogger(
         project="kaori/Capsule",

@@ -20,11 +20,11 @@ with open("Capsules/config.yaml", 'r') as stream:
         print(exc)
 
 # model = CapsuleModel(PARAMS)
-convmodel = CapsuleModel.load_from_checkpoint(PARAMS["gradio"]["model_path"], PARAMS=PARAMS["gradio"])
+convmodel = CapsuleModel.load_from_checkpoint(PARAMS["demo-conv"]["training_settings"]["ckpt_path"], PARAMS=PARAMS["demo-conv"])
 convmodel.eval()
-capsule = CapsuleModel.load_from_checkpoint(PARAMS["gradio2"]["model_path"], PARAMS=PARAMS["gradio2"])
+capsule = CapsuleModel.load_from_checkpoint(PARAMS["demo-cap2"]["training_settings"]["ckpt_path"], PARAMS=PARAMS["demo-cap2"])
 # disable randomness, dropout, etc...
-capsule.eval()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
+capsule.eval()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
 
 from torchvision import transforms
 Train_transform = transforms.Compose([

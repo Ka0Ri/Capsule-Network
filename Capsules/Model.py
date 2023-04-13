@@ -11,18 +11,19 @@ from CapsuleLayer import ConvCaps, PrimaryCaps, Caps_Dropout, LocapBlock, glocap
 
 #-----lOSS FUNCTION------
 
-class LossFunction(nn.Module):
+class BCE(nn.Module):
     """
     Loss function
     """
-    def __init__(self):
-        super(LossFunction, self).__init__()
+    def __init__(self, weight=None):
+        super(BCE, self).__init__()
         self.MSE = nn.MSELoss(size_average=True)
+        self.BCE = nn.BCEWithLogitsLoss(weight)
 
-    def forward(self, labels, seg, bce_weight=0.5):
-        bce = F.binary_cross_entropy_with_logits(seg, labels)
+    def forward(self, seg, labels):
+        bce = self.BCE(seg, labels)
+        # bce = F.binary_cross_entropy_with_logits(seg, labels)
         # loss = self.MSE(labels, seg)
-     
         return bce
 
 class MarginLoss(nn.Module):

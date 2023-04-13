@@ -1,55 +1,5 @@
 {
         # hyperparams for training
-        "config1": {
-                "architect_settings": 
-                {
-                        "model": "convolution",
-                        "n_cls": 5,
-                        "n_conv": 2,
-                        "Conv1": {"in": 1,
-                                "out": 64,
-                                "k": 5,
-                                "s": 2,
-                                "p": 0},
-                        "Conv2": {"in": 64,
-                                "out": 128,
-                                "k": 5,
-                                "s": 1,
-                                "p": 0},
-                        "PrimayCaps": {"in": 128,
-                                "out": 32,
-                                "k": 1,
-                                "s": 1,
-                                "p": 0},
-                        "n_caps": 2,
-                        "cap_dims": 4,
-                        "n_routing": 2,
-                        "Caps1": {"in": 128,
-                                "out": 32,
-                                "k": [3, 3],
-                                "s": [2, 2]},
-                        "Caps2": {"in": 32,
-                                "out": 5,
-                                "k": [3, 3],
-                                "s": [2, 2]},
-                        "routing": {"type": "None",
-                                "params" : [3, 0.1, 2]}
-                },
-
-                "training_settings":
-                {
-                        "lr": 0.0001,
-                        "lr_step": 20,
-                        "lr_decay": 0.8,
-                        "momentum": 0.9,
-                        "weight_decay": 0.005,
-                        "n_epoch": 200,
-                        "n_batch": 128,
-                        "dataset": "smallNorb",
-                        "ckpt_path": "smallNorb-conv"
-                }
-        },
-
         "config2": {
                 "architect_settings": 
                 {
@@ -85,9 +35,10 @@
                         "routing": {"type": "dynamic",
                                 "params" : [3]}
                 },
-
                 "training_settings":
                 {
+                        "loss": "ce",
+                        "CAM": False,
                         "lr": 0.001,
                         "lr_step": 10,
                         "lr_decay": 0.8,
@@ -96,7 +47,6 @@
                         "n_epoch": 50,
                         "n_batch": 128,
                         "dataset": "affNist",
-                        "center": False,
                         "ckpt_path": "affNist-eff-dynamic",
                 }
         },
@@ -136,7 +86,11 @@
                         "routing": {"type": "dynamic",
                                 "params" : [3]}
                 },
-                "model_path": "model/centerNist-conv/epoch=75-step=29716.ckpt"
+                "training_settings":{
+                        "loss": "ce",
+                        "CAM": True,
+                        "ckpt_path": "model/centerNist-conv/epoch=75-step=29716.ckpt"
+                }
         },
 
         "demo-cap1": {
@@ -174,9 +128,13 @@
                         "routing": {"type": "dynamic",
                                 "params" : [3]}
                 },
-                "model_path": "model/test/test2.ckpt"
+                "training_settings":{
+                        "loss": "ce",
+                        "CAM": True,
+                        "ckpt_path": "model/centerNist-conv/epoch=75-step=29716.ckpt"
+                }
         },
-        "gradio2": {
+        "demo-cap2": {
                 "architect_settings": 
                 {
                         "model": "eff",
@@ -211,7 +169,11 @@
                         "routing": {"type": "em",
                                 "params" : [3, 0.01]}
                 },
-                "model_path": "model/affNist-eff-em/epoch=16-step=6647.ckpt"
+                "training_settings":{
+                        "loss": "ce",
+                        "CAM": True,
+                        "ckpt_path": "model/affNist-eff-em/epoch=16-step=6647.ckpt"
+                }
         },
 
 }
