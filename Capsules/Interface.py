@@ -1,14 +1,11 @@
 import gradio as gr
-import os
 import cv2
 import numpy as np
 import yaml
 import torch
 from main import CapsuleModel
 from ReadDataset import affNistread
-from torch.utils.data import DataLoader
 import random
-from PIL import Image
 from pytorch_lightning import LightningModule, Trainer
 
 
@@ -19,10 +16,9 @@ with open("Capsules/config.yaml", 'r') as stream:
     except yaml.YAMLError as exc:
         print(exc)
 
-# model = CapsuleModel(PARAMS)
 convmodel = CapsuleModel.load_from_checkpoint(PARAMS["demo-conv"]["training_settings"]["ckpt_path"], PARAMS=PARAMS["demo-conv"])
 convmodel.eval()
-capsule = CapsuleModel.load_from_checkpoint(PARAMS["demo-cap2"]["training_settings"]["ckpt_path"], PARAMS=PARAMS["demo-cap2"])
+capsule = CapsuleModel.load_from_checkpoint(PARAMS["demo-cap1"]["training_settings"]["ckpt_path"], PARAMS=PARAMS["demo-cap1"])
 # disable randomness, dropout, etc...
 capsule.eval()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
 
@@ -39,19 +35,13 @@ Test_transform = transforms.Compose([
             transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
 
-Test_data = affNistread(mode="test", data_path="data/centerMnist", transform=Test_transform, aff=False)
-
-
-
-# trainer = Trainer(accelerator="gpu", devices=[1])
+Test_data = affNistread(mode="test", data_path="data/affMnist", transform=Test_transform, aff=True)
 
 def normalize(img):
     img = img - np.min(img)
     nor_img = img / np.max(img)
     nor_img = np.uint8(255 * nor_img)
     return nor_img
-
-
 
 
 def returnCAM(img, feature_conv, weight_softmax, class_idx):

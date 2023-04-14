@@ -302,45 +302,129 @@ class EffCapNets(nn.Module):
    
         return a
 
+# Segmentation Model
+
+def convrelu(in_channels, out_channels, kernel, padding):
+    return nn.Sequential(
+        nn.Conv2d(in_channels, out_channels, kernel, padding=padding),
+        nn.LeakyReLU(inplace=True),
+    )
+
+def deconvrelu(in_channels, out_channels, kernel, stride, padding):
+    return nn.Sequential(
+        nn.ConvTranspose2d(in_channels, out_channels, kernel, stride=stride, padding=padding, output_padding=1),
+        nn.LeakyReLU(inplace=True),
+    )
+
+class ConvUNet(nn.Module):
+    """
+    Network description
+    """
+    def __init__(self, model_configs):
+        super(ConvUNet, self).__init__()
+
+        n_filters = model_configs["n_filters"]
+        # Contracting Path
+        self.n_layer = model_configs['n_layers']
+        conv = model_configs['conv']
+        self.downsamling_layers = nn.ModuleList([nn.Sequential(convrelu(model_configs["channel"], n_filters, conv["k"], conv["p"]), 
+                                                nn.MaxPool2d(kernel_size=2))])
+        for i in range(self.n_layer - 1):
+            self.downsamling_layers.append(nn.Sequential(
+                convrelu(n_filters * (2 ** i), n_filters * (2 ** (i + 1)), conv["k"], conv["p"]),
+                nn.MaxPool2d(kernel_size=2))
+            )
+
+       
+        transpose_conv = model_configs['transpose_conv']
+        self.upsampling_layers = nn.ModuleList()
+        for i in range(self.n_layer - 1, 0, -1):
+           
+            self.upsampling_layers.append(deconvrelu(n_filters * (2 ** i), n_filters * (2 ** (i - 1)), transpose_conv["k"], transpose_conv["s"], transpose_conv["p"]))
+            self.upsampling_layers.append(convrelu(n_filters * (2 ** i), n_filters * (2 ** (i - 1)), conv["k"], conv["p"]))
+
+        # Expansive Path
+        
+        self.upsampling_layers.append(deconvrelu(n_filters, model_configs["channel"], transpose_conv["k"], transpose_conv["s"], transpose_conv["p"]))
+        self.upsampling_layers.append(nn.Conv2d(2 * model_configs["channel"], model_configs["channel"], conv["k"], padding='same'))
+       
+
+    def forward(self, x, y=None):
+
+        encode = [x]
+        for i in range(self.n_layer):
+            down = self.downsamling_layers[i](encode[-1])
+            encode.append(down)
+            print(down.shape)
+
+        up = encode[-1]
+       
+        for i in range(0, 2 * self.n_layer, 2):
+            up = self.upsampling_layers[i](up)
+            cat = torch.cat([up, encode[-(i//2) - 2]], dim=1)
+            up = self.upsampling_layers[i+1](cat)
+            print(up.shape)
+ 
+        return up
 
 
 if __name__  == "__main__":
+    # architect_settings = {
+    #         "shortcut": True,
+    #         "n_cls": 10,
+    #         "n_conv": 2,
+    #         "Conv1": {"in": 1,
+    #                 "out": 64,
+    #                 "k": 5,
+    #                 "s": 2,
+    #                 "p": 0},
+    #         "Conv2": {"in": 64,
+    #                 "out": 128,
+    #                 "k": 5,
+    #                 "s": 2,
+    #                 "p": 0},
+    #         "PrimayCaps": {"in": 128,
+    #                 "out": 32,
+    #                 "k": 1,
+    #                 "s": 1,
+    #                 "p": 0},
+    #         "n_caps": 2,
+    #         "cap_dims": 4,
+    #         "n_routing": 2,
+    #         "Caps1": {"in": 32,
+    #                 "out": 16,
+    #                 "k": [3, 3],
+    #                 "s": [2, 2]},
+    #         "Caps2": {"in": 16,
+    #                 "out": 10,
+    #                 "k": [3, 3],
+    #                 "s": [1, 1]},
+    #         "routing": {"type": "dynamic",
+    #                 "params" : [3]}
+    #         }
+    # # model = EffCapNets(model_configs=architect_settings).cuda()
+    # model = CapNets(model_configs=architect_settings).cuda()
+    # # model = CoreArchitect(architect_settings).cuda()
+    # input_tensor = torch.rand(2, 1, 40, 40).cuda()
+    # a = model(input_tensor)
+    # print(a)
+
     architect_settings = {
-            "shortcut": True,
-            "n_cls": 10,
-            "n_conv": 2,
-            "Conv1": {"in": 1,
-                    "out": 64,
-                    "k": 5,
-                    "s": 2,
-                    "p": 0},
-            "Conv2": {"in": 64,
-                    "out": 128,
-                    "k": 5,
-                    "s": 2,
-                    "p": 0},
-            "PrimayCaps": {"in": 128,
-                    "out": 32,
-                    "k": 1,
-                    "s": 1,
-                    "p": 0},
-            "n_caps": 2,
-            "cap_dims": 4,
-            "n_routing": 2,
-            "Caps1": {"in": 32,
-                    "out": 16,
-                    "k": [3, 3],
-                    "s": [2, 2]},
-            "Caps2": {"in": 16,
-                    "out": 10,
-                    "k": [3, 3],
-                    "s": [1, 1]},
-            "routing": {"type": "dynamic",
-                    "params" : [3]}
-            }
-    # model = EffCapNets(model_configs=architect_settings).cuda()
-    model = CapNets(model_configs=architect_settings).cuda()
-    # model = CoreArchitect(architect_settings).cuda()
-    input_tensor = torch.rand(2, 1, 40, 40).cuda()
-    a = model(input_tensor)
-    print(a)
+        "channel": 1,
+        "n_filters": 16,
+        "n_layers": 2,
+        "conv": {
+            "k": 3,
+            "p": 1
+        },
+        "transpose_conv": {
+            "k": 3,
+            "s": 2,
+            "p": 1
+        }
+    }
+    
+    a = torch.rand(2, 1, 256, 256).cuda()
+    model = ConvUNet(model_configs=architect_settings).cuda()
+    print(model)
+    o = model(a)

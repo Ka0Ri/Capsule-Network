@@ -49,6 +49,33 @@ python Capsules/Interface.py
 ![alt text](image/gradio.png)
 
 #
+## Configuration (Config file)
+We set up the configurations (model achitecture and training settings) using a [config.yaml](Capsules/config.yaml). The config file is a list of dictionaries, where a dictionary saves a specific configuration. The structure is as follows:
+```
+"name": {
+    "architect_settings": {
+        "model": one of architectures in ["eff", "base", "convolution", "shortcut"] (recommended "eff")
+        ... (model configurationm, number of layers, and details of each layer, it depends on task, input and output size)
+        "routing": {
+            "type": routing method, ["dynamic", "em", "fuzzy"]
+            "params": parameters for routing method
+                      - for dynamic routing: [iterations] (e.x [3])
+                      - for em routing: [iterations, beta] (e.x [3, 0.01])
+                      - for fuzzy routing: [iterations, beta, m] (e.x [3, 0.01, 2])
+        }
+    }
+    "training_settings":{
+        "loss": we prepare 3 loss for classication ["ce", "margin", "spread"] and a loss for segmentation ["bce"]
+        "CAM": set Fasle when training and True for drawing Class Activation map in demo.
+        ... (other training parameters such as batch size, epoch, learning rate)
+        "dataset": path to the training dataset, we prepared some datasets ["affNist","CenterMnist", "smallNorb"] for classification and ["CT-scan-dataset"] for segementation, the dataset shoud be inside the "data" directory.
+        "ckpt_path": path to checkpoint
+    }
+}
+```
+Please refer to the config file to understand how it works, and please understand that to ensure the flexibility of the module we can not further hard coding the parameters because `tunning the parameters` is an important part of the development. We plan to continue optimizing the configurations so the config file may be updated in the future.
+
+#
 ## list of papers
 - [EM routing](https://openreview.net/pdf?id=HJWLfGWRb)
 - [Dynamic routing](https://arxiv.org/pdf/1710.09829.pdf)

@@ -12,8 +12,6 @@ from pytorch_lightning.loggers import NeptuneLogger
 
 
 
-
-
 class CapsuleModel(LightningModule):
     def __init__(self, PARAMS):
         super().__init__()
@@ -28,9 +26,9 @@ class CapsuleModel(LightningModule):
             self.model = CapNets(model_configs=PARAMS['architect_settings'])
         else:
             print("Model is not implemented yet")
-            
 
-        if(PARAMS['training_settings']['loss'] == "ce"):
+
+        if(PARAMS['training_settings']['loss'] == "ce"):                                                                                                                
             self.loss = CrossEntropyLoss(num_classes=PARAMS['architect_settings']['n_cls'])
         elif(PARAMS['training_settings']['loss'] == "spread"):
             self.loss = SpreadLoss(num_classes=PARAMS['architect_settings']['n_cls'])
@@ -166,7 +164,7 @@ if __name__ == "__main__":
     with open("Capsules/config.yaml", 'r') as stream:
         try:
             PARAMS = yaml.safe_load(stream)
-            PARAMS = PARAMS['affNist']
+            PARAMS = PARAMS['config2']
         except yaml.YAMLError as exc:
             print(exc)
 
@@ -184,7 +182,6 @@ if __name__ == "__main__":
             # transforms.ToPILImage(),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
             transforms.Normalize(mean = (0.5,), std = (0.5,))
-        
             ])
             
         Test_transform = transforms.Compose([
@@ -219,6 +216,19 @@ if __name__ == "__main__":
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
             transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
+    
+        Train_data = affNistread(mode="train", data_path="data/affMnist", transform=Train_transform)
+        Val_data =  affNistread(mode="val", data_path="data/affMnist", transform=Train_transform)
+        Test_data = affNistread(mode="test", data_path="data/affMnist", transform=Train_transform)
+        
+    elif(PARAMS['training_settings']['dataset'] == "centerMnist"):
+
+        Train_transform = transforms.Compose([
+            transforms.ToPILImage(),
+            # transforms.RandomAffine(degrees=0, translate=(0.125, 0.125)),
+            transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
+            transforms.Normalize(mean = (0.5,), std = (0.5,))
+        ])
             
         Test_transform = transforms.Compose([
             transforms.ToPILImage(),
@@ -226,15 +236,11 @@ if __name__ == "__main__":
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
             transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
-        
-        if(PARAMS['training_settings']['center'] == True):
-            Train_data = affNistread(mode="train", data_path="data/centerMnist", aff=False, transform=Train_transform)
-            Val_data =  affNistread(mode="val", data_path="data/centerMnist", aff=False, transform=Test_transform)
-            Test_data = affNistread(mode="test", data_path="data/centerMnist", aff=False, transform=Test_transform)
-        else:
-            Train_data = affNistread(mode="train", data_path="data/affMnist", transform=Train_transform)
-            Val_data =  affNistread(mode="val", data_path="data/affMnist", transform=Train_transform)
-            Test_data = affNistread(mode="test", data_path="data/affMnist", transform=Train_transform)
+
+        Train_data = affNistread(mode="train", data_path="data/centerMnist", aff=False, transform=Train_transform)
+        Val_data =  affNistread(mode="val", data_path="data/centerMnist", aff=False, transform=Test_transform)
+        Test_data = affNistread(mode="test", data_path="data/centerMnist", aff=False, transform=Test_transform)
+       
 
     elif(PARAMS['training_settings']['dataset'] == 'SVHN'):
 

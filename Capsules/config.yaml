@@ -23,7 +23,6 @@
                                 "p": 0},
                         "n_caps": 2,
                         "cap_dims": 4,
-                        "n_routing": 2,
                         "Caps1": {"in": 32,
                                 "out": 32,
                                 "k": [3, 3],
@@ -37,7 +36,7 @@
                 },
                 "training_settings":
                 {
-                        "loss": "ce",
+                        "loss": "spread",
                         "CAM": False,
                         "lr": 0.001,
                         "lr_step": 10,
@@ -47,7 +46,7 @@
                         "n_epoch": 50,
                         "n_batch": 128,
                         "dataset": "affNist",
-                        "ckpt_path": "affNist-eff-dynamic",
+                        "ckpt_path": "test",
                 }
         },
         # hyperparams for testing
@@ -74,7 +73,6 @@
                                 "p": 0},
                         "n_caps": 2,
                         "cap_dims": 4,
-                        "n_routing": 2,
                         "Caps1": {"in": 128,
                                 "out": 32,
                                 "k": [3, 3],
@@ -89,7 +87,7 @@
                 "training_settings":{
                         "loss": "ce",
                         "CAM": True,
-                        "ckpt_path": "model/centerNist-conv/epoch=75-step=29716.ckpt"
+                        "ckpt_path": "model/test/conv.ckpt"
                 }
         },
 
@@ -116,7 +114,6 @@
                                 "p": 0},
                         "n_caps": 2,
                         "cap_dims": 4,
-                        "n_routing": 2,
                         "Caps1": {"in": 32,
                                 "out": 32,
                                 "k": [3, 3],
@@ -131,7 +128,7 @@
                 "training_settings":{
                         "loss": "ce",
                         "CAM": True,
-                        "ckpt_path": "model/centerNist-conv/epoch=75-step=29716.ckpt"
+                        "ckpt_path": "model/test/base.ckpt"
                 }
         },
         "demo-cap2": {
@@ -157,7 +154,6 @@
                                 "p": 0},
                         "n_caps": 2,
                         "cap_dims": 4,
-                        "n_routing": 2,
                         "Caps1": {"in": 32,
                                 "out": 32,
                                 "k": [3, 3],
@@ -166,13 +162,13 @@
                                 "out": 10,
                                 "k": [3, 3],
                                 "s": [1, 1]},
-                        "routing": {"type": "em",
-                                "params" : [3, 0.01]}
+                        "routing": {"type": "dynamic",
+                                "params" : [3]}
                 },
                 "training_settings":{
                         "loss": "ce",
                         "CAM": True,
-                        "ckpt_path": "model/affNist-eff-em/epoch=16-step=6647.ckpt"
+                        "ckpt_path": "model/test/eff-dynamic.ckpt"
                 }
         },
 
