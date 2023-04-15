@@ -100,6 +100,49 @@
                         "ckpt_path": "test",
                 }
         },
+
+        "config-segment": {
+                "architect_settings": {
+                        "model": "segment",
+                        "reconstructed": False,
+                        "channel": 1,
+                        "n_filters": 4,
+                        "n_layers": 4,
+                        "PrimayCaps": {"in": 1,
+                                "out": 3,
+                                "k": 5,
+                                "s": 2,
+                                "p": 2},
+                        "cap_dims": 4,
+                        "conv": {
+                        "k": [3, 3],
+                        "s": [2, 2],
+                        "p": [1, 1]
+                        },
+                        "transpose_conv": {
+                        "k": 3,
+                        "s": 2,
+                        "p": 1
+                        },
+                        "routing": {"type": "dynamic",
+                                "params" : [3]}
+                },
+                "training_settings":
+                {
+                        "loss": "bce",
+                        "CAM": False,
+                        "lr": 0.0001,
+                        "lr_step": 10,
+                        "lr_decay": 0.8,
+                        "momentum": 0.9,
+                        "weight_decay": 0.005,
+                        "n_epoch": 200,
+                        "n_batch": 32,
+                        "dataset": "CT-scan-dataset",
+                        "ckpt_path": "test",
+                }
+        
+        },
         
         # hyperparams for testing
         "demo-conv": {

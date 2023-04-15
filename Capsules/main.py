@@ -2,9 +2,10 @@ import numpy as np
 import yaml
 import torch
 from sklearn.metrics import accuracy_score
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
 from torchvision.utils import make_grid
+
 from Model import *
 from ReadDataset import *
 from pytorch_lightning import LightningModule, Trainer
@@ -18,6 +19,7 @@ class CapsuleModel(LightningModule):
         super().__init__()
 
         self.reconstructed = False
+        self.segment = False
 
         if(PARAMS['architect_settings']['model'] == "convolution"):
             self.model = ConvNeuralNet(model_configs=PARAMS['architect_settings'])
@@ -27,6 +29,9 @@ class CapsuleModel(LightningModule):
             self.model = ShortcutCapsNet(model_configs=PARAMS['architect_settings'])
         elif(PARAMS['architect_settings']['model'] == "base"):
             self.model = CapNets(model_configs=PARAMS['architect_settings'])
+        elif(PARAMS['architect_settings']['model'] == "segment"):
+            self.segment = True
+            self.model = CapConvUNet(model_configs=PARAMS['architect_settings'])
         else:
             print("Model is not implemented yet")
 
@@ -69,19 +74,25 @@ class CapsuleModel(LightningModule):
         
     def training_step(self, batch, batch_idx):
         x, y = batch
-        if(self.reconstructed):
-            y_hat, reconstructions = self(x, y)
-            loss = self.loss(y_hat, y) + 0.5 * self.reconstruct_loss(reconstructions, x)
-        else:
+        if(self.segment):
             y_hat = self(x)
-            loss = self.loss(y_hat, y)
+            loss = self.loss(y, y_hat)
+            y_true = y.cpu().detach()
+            y_pred = y_hat.cpu().detach()
+            
+        else:
+            if(self.reconstructed):
+                y_hat, reconstructions = self(x, y)
+                loss = self.loss(y_hat, y) + 0.5 * self.reconstruct_loss(reconstructions, x)
+            else:
+                y_hat = self(x)
+                loss = self.loss(y_hat, y)
+            
+            y_true = y.tolist()
+            y_pred = y_hat.argmax(axis=1).tolist()
+            self.log("metrics/batch/acc", accuracy_score(accuracy_score(y_true, y_pred)), prog_bar=False)
+
         self.log("metrics/batch/loss", loss, prog_bar=False)
-
-        y_true = y.tolist()
-        y_pred = y_hat.argmax(axis=1).tolist()
-        acc = accuracy_score(y_true, y_pred)
-        self.log("metrics/batch/acc", acc)
-
         self.training_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred})
         return loss
 
@@ -94,28 +105,36 @@ class CapsuleModel(LightningModule):
             loss = np.append(loss, results_dict["loss"])
             y_true = np.append(y_true, results_dict["y_true"])
             y_pred = np.append(y_pred, results_dict["y_pred"])
-        acc = accuracy_score(y_true, y_pred)
+       
         self.log("metrics/epoch/loss", loss.mean())
-        self.log("metrics/epoch/acc", acc)
+        if(self.segment == False):
+            self.log("metrics/epoch/acc", accuracy_score(y_true, y_pred))
         self.training_step_outputs.clear()
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
-        y_hat = self(x)
        
-        if(self.reconstructed):
-            y_hat, reconstructions = self(x, y)
-            loss = self.loss(y_hat, y) + 0.1 * self.reconstruct_loss(reconstructions, x)
-            y_true = y.tolist()
-            y_pred = y_hat.argmax(axis=1).tolist()
-            self.validation_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred, "reconstructions": reconstructions})
+        if(self.segment):
+            y_hat = self(x)
+            loss = self.loss(y, y_hat)
+            y_true = y.cpu().detach()
+            y_pred = torch.sigmoid(y_hat).cpu().detach()
+            self.validation_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred})
 
         else:
-            y_hat = self(x)
-            loss = self.loss(y_hat, y)
-            y_true = y.tolist()
-            y_pred = y_hat.argmax(axis=1).tolist()
-            self.validation_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred})
+            if(self.reconstructed):
+                y_hat, reconstructions = self(x, y)
+                loss = self.loss(y_hat, y) + 0.1 * self.reconstruct_loss(reconstructions, x)
+                y_true = y.tolist()
+                y_pred = y_hat.argmax(axis=1).tolist()
+                self.validation_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred, "reconstructions": reconstructions})
+
+            else:
+                y_hat = self(x)
+                loss = self.loss(y_hat, y)
+                y_true = y.tolist()
+                y_pred = y_hat.argmax(axis=1).tolist()
+                self.validation_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred})
     
 
     def on_validation_epoch_end(self):
@@ -127,14 +146,21 @@ class CapsuleModel(LightningModule):
             loss = np.append(loss, results_dict["loss"])
             y_true = np.append(y_true, results_dict["y_true"])
             y_pred = np.append(y_pred, results_dict["y_pred"])
-        acc = accuracy_score(y_true, y_pred)
-
         self.log("val/epoch/loss", loss.mean())
-        self.log("val/epoch/acc", acc)
-
-        reconstructions = make_grid(outputs[0]["reconstructions"], nrow=int(PARAMS['training_settings']["n_batch"] ** 0.5))
-        reconstructions = reconstructions.cpu().numpy().transpose(1, 2, 0)
-        self.logger.experiment["val/reconstructions"].append(File.as_image(reconstructions))
+        if(self.segment):
+            y_true = make_grid(outputs[0]["y_true"], nrow=int(PARAMS['training_settings']["n_batch"] ** 0.5))
+            y_pred = make_grid(outputs[0]["y_pred"], nrow=int(PARAMS['training_settings']["n_batch"] ** 0.5))
+            y_true = y_true.numpy().transpose(1, 2, 0)
+            y_pred = y_pred.numpy().transpose(1, 2, 0)
+            
+            self.logger.experiment["val/gt_images"].append(File.as_image(y_true))
+            self.logger.experiment["val/outputs"].append(File.as_image(y_pred))
+        else:
+            self.log("val/epoch/acc", accuracy_score(y_true, y_pred))
+            if(self.reconstructed):
+                reconstructions = make_grid(outputs[0]["reconstructions"], nrow=int(PARAMS['training_settings']["n_batch"] ** 0.5))
+                reconstructions = reconstructions.cpu().numpy().transpose(1, 2, 0)
+                self.logger.experiment["val/reconstructions"].append(File.as_image(reconstructions))
 
         self.validation_step_outputs.clear()
 
@@ -169,13 +195,13 @@ class CapsuleModel(LightningModule):
         self.logger.experiment["test/acc"] = acc
         self.test_step_outputs.clear()
     
-    def predict_step(self, batch, batch_idx):
-        x = batch
-        y_hat = self(x)
+    # def predict_step(self, batch, batch_idx):
+    #     x = batch
+    #     y_hat = self(x)
       
-        # y_pred = y_hat.argmax(axis=1)
-        y_pred = torch.softmax(y_hat, dim=1)
-        return y_pred.tolist()
+    #     # y_pred = y_hat.argmax(axis=1)
+    #     y_pred = torch.softmax(y_hat, dim=1)
+    #     return y_pred.tolist()
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=PARAMS['training_settings']['lr'])
@@ -193,7 +219,7 @@ if __name__ == "__main__":
 
     with open("Capsules/config.yaml", 'r') as stream:
         PARAMS = yaml.safe_load(stream)
-        PARAMS = PARAMS['config3']
+        PARAMS = PARAMS['config-segment']
         print(PARAMS)
        
 
@@ -315,6 +341,25 @@ if __name__ == "__main__":
         Val_data = SmallNorbread(mode="val", data_path="data/smallNorb", transform=Test_transform)
         Test_data = SmallNorbread(mode="test", data_path="data/smallNorb", transform=Test_transform)
 
+    elif(PARAMS['training_settings']['dataset'] == 'CT-scan-dataset'):
+        Train_transform = transforms.Compose([
+            # transforms.ToPILImage(),
+            transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
+            # transforms.Normalize((0.5), (0.5))
+        ])
+
+        Test_transform = transforms.Compose([
+                    transforms.ToPILImage(),
+                    transforms.RandomAffine(degrees=30, translate=(0.1, 0.1)),
+                    transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
+                    # transforms.Normalize((0.5), (0.5))
+                ])
+
+        train_ds = LungCTscan(data_dir="data/CT-scan-dataset", transform=Train_transform)
+        val_ds = LungCTscan(data_dir="data/CT-scan-dataset", transform=Train_transform)
+        Train_data, _ = random_split(train_ds, [200, 67])
+        _, Val_data = random_split(val_ds, [200, 67])
+        _, Test_data = random_split(val_ds, [200, 67])
 
     Train_dataloader = DataLoader(dataset=Train_data, batch_size = PARAMS['training_settings']['n_batch'], shuffle=True, num_workers=4)
     Val_dataloader = DataLoader(dataset=Val_data, batch_size = PARAMS['training_settings']['n_batch'], shuffle=False, num_workers=4)
@@ -329,14 +374,14 @@ if __name__ == "__main__":
     # (neptune) log hyper-parameters
     neptune_logger.log_hyperparams(params=PARAMS)
 
-    checkpoint_callback = ModelCheckpoint(dirpath=os.path.join("model", PARAMS['training_settings']["ckpt_path"]), save_top_k=1, monitor='val/epoch/acc', mode="max")
+    checkpoint_callback = ModelCheckpoint(dirpath=os.path.join("model", PARAMS['training_settings']["ckpt_path"]), save_top_k=1, monitor='metrics/batch/loss', mode="min")
 
     # (neptune) initialize a trainer and pass neptune_logger
     trainer = Trainer(
         logger=neptune_logger,
         max_epochs=PARAMS['training_settings']["n_epoch"],
         accelerator="gpu",
-        devices=[0],
+        devices=[1],
         callbacks=[checkpoint_callback]
     )
 
@@ -344,4 +389,4 @@ if __name__ == "__main__":
     trainer.fit(model=model, train_dataloaders=Train_dataloader, val_dataloaders=Val_dataloader)
 
     # test
-    trainer.test(model, dataloaders=Test_dataloader)
+    # trainer.test(model, dataloaders=Test_dataloader)

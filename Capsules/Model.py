@@ -483,24 +483,19 @@ class CapConvUNet(nn.Module):
         else:
             pose, a = self.downsamling_layers[0](x, sq=False)
 
-        print(pose.shape, a.shape)
-        encode = [(x, x), (pose, a)]
+        encode = [(x, x), (pose, a.squeeze().permute(0, 3, 1, 2))]
 
         for i in range(1, self.n_layer):
             pose, a = self.downsamling_layers[i](pose, a, self.routing_config['type'], *self.routing_config['params'])
-            encode.append((pose, a))
-            print(pose.shape)
-            print(a.shape)
-
-        up = encode[-1]
-       
+            encode.append((pose, a.squeeze().permute(0, 3, 1, 2)))
+           
+        up = encode[-1][1]
         for i in range(0, 2 * self.n_layer, 2):
             up = self.upsampling_layers[i](up)
-            c = encode[-(i//2) - 2][1].squeeze().permute(0, 3, 1, 2)
+            c = encode[-(i//2) - 2][1]
             cat = torch.cat([up, c], dim=1)
-            print(cat.shape)
             up = self.upsampling_layers[i+1](cat)
-            print(up.shape)
+          
  
         return up
 
@@ -589,11 +584,10 @@ if __name__  == "__main__":
             "s": 2,
             "p": 1
         },
-        "routing": {"type": "dynamic",
-                    "params" : [3]}
+        "routing": {"type": "fuzzy",
+                    "params" : [3, 0.01]}
     }
 
     model = CapConvUNet(model_configs=architect_settings).cuda()
     a = torch.rand(2, 1, 256, 256).cuda()
-    print(model)
     o = model(a)
