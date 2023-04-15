@@ -20,12 +20,12 @@ sh env-create.sh
 ```
 #
 We reimplement Capsule Layers in 3 files: Routing.py, CapsuleLayer.py, and Model.py
-- Routing.py: Implement 3 routing methods: [EM](Capsules/Routing.py#L23), [Dynamic](Capsules/Routing.py#84), and [Fuzzy](Capsules/Routing.py#L125). Algorithm's details are provided in [pdf](Algorithm.pdf)
-- CapsuleLayer.py: Implement [2D ConvCaps](Capsules/CapsuleLayer.py#L55), [Primary Capsules](Capsules/CapsuleLayer.py#L12), [Shortcut Layers](Capsules/CapsuleLayer.py#L173), and [Efficient DepthWise Capsule](Capsules/CapsuleLayer.py#L304).
+- Routing.py: Implement 3 routing methods: [EM](Capsules/Routing.py#L23), [Dynamic](Capsules/Routing.py#84), and [Fuzzy](Capsules/Routing.py#L126). Algorithm's details are provided in [pdf](Algorithm.pdf)
+- CapsuleLayer.py: Implement [2D ConvCaps](Capsules/CapsuleLayer.py#L70), [Primary Capsules](Capsules/CapsuleLayer.py#L29), [Shortcut Layers](Capsules/CapsuleLayer.py#L260), and [Efficient DepthWise Capsule](Capsules/CapsuleLayer.py#L319).
 
 ![alt text](image/4.png)
 ![alt text](image/5.png)
-- Model.py: Using above implemented modules to build a [CapsuleNetwork](Capsules/Model.py#L84), [Shortcut Architecture](Capsules/Model.py#L168), and [Efficient CapsuleNetwork](Capsules/Model.py#L254) (recommended).
+- Model.py: Using above implemented modules to build a [CapsuleNetwork](Capsules/Model.py#L97), [Shortcut Architecture](Capsules/Model.py#L181), and [Efficient CapsuleNetwork](Capsules/Model.py#L254) (recommended).
 
 #
 ## Training Interface
@@ -55,6 +55,7 @@ We set up the configurations (model achitecture and training settings) using a [
 "name": {
     "architect_settings": {
         "model": one of architectures in ["eff", "base", "convolution", "shortcut"] (recommended "eff")
+        "reconstructed": using reconstructed loss (recommended True)
         ... (model configurationm, number of layers, and details of each layer, it depends on task, input and output size)
         "routing": {
             "type": routing method, ["dynamic", "em", "fuzzy"]

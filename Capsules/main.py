@@ -4,10 +4,11 @@ import torch
 from sklearn.metrics import accuracy_score
 from torch.utils.data import DataLoader
 from torchvision import transforms
+from torchvision.utils import make_grid
 from Model import *
 from ReadDataset import *
 from pytorch_lightning import LightningModule, Trainer
-
+from neptune.types import File
 from pytorch_lightning.loggers import NeptuneLogger
 
 
@@ -15,6 +16,8 @@ from pytorch_lightning.loggers import NeptuneLogger
 class CapsuleModel(LightningModule):
     def __init__(self, PARAMS):
         super().__init__()
+
+        self.reconstructed = False
 
         if(PARAMS['architect_settings']['model'] == "convolution"):
             self.model = ConvNeuralNet(model_configs=PARAMS['architect_settings'])
@@ -39,6 +42,10 @@ class CapsuleModel(LightningModule):
         else:
             print("Loss is not implemented yet")
 
+        if(PARAMS['architect_settings']['reconstructed']):
+            self.reconstructed = True
+            self.reconstruct_loss = nn.MSELoss()
+
         self.training_step_outputs = []
         self.validation_step_outputs = []
         self.test_step_outputs = []
@@ -57,13 +64,17 @@ class CapsuleModel(LightningModule):
                 self.model.caps_layers[0].register_forward_hook(hook_feature)
                 self.model.caps_layers[1].register_forward_hook(hook_feature)
 
-    def forward(self, x):
-        return self.model(x)
-
+    def forward(self, x, y=None):
+        return self.model(x, y)
+        
     def training_step(self, batch, batch_idx):
         x, y = batch
-        y_hat = self(x)
-        loss = self.loss(y_hat, y)
+        if(self.reconstructed):
+            y_hat, reconstructions = self(x, y)
+            loss = self.loss(y_hat, y) + 0.5 * self.reconstruct_loss(reconstructions, x)
+        else:
+            y_hat = self(x)
+            loss = self.loss(y_hat, y)
         self.log("metrics/batch/loss", loss, prog_bar=False)
 
         y_true = y.tolist()
@@ -92,11 +103,19 @@ class CapsuleModel(LightningModule):
         x, y = batch
         y_hat = self(x)
        
-        loss = self.loss(y_hat, y)
+        if(self.reconstructed):
+            y_hat, reconstructions = self(x, y)
+            loss = self.loss(y_hat, y) + 0.1 * self.reconstruct_loss(reconstructions, x)
+            y_true = y.tolist()
+            y_pred = y_hat.argmax(axis=1).tolist()
+            self.validation_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred, "reconstructions": reconstructions})
 
-        y_true = y.tolist()
-        y_pred = y_hat.argmax(axis=1).tolist()
-        self.validation_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred})
+        else:
+            y_hat = self(x)
+            loss = self.loss(y_hat, y)
+            y_true = y.tolist()
+            y_pred = y_hat.argmax(axis=1).tolist()
+            self.validation_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred})
     
 
     def on_validation_epoch_end(self):
@@ -112,12 +131,23 @@ class CapsuleModel(LightningModule):
 
         self.log("val/epoch/loss", loss.mean())
         self.log("val/epoch/acc", acc)
+
+        reconstructions = make_grid(outputs[0]["reconstructions"], nrow=int(PARAMS['training_settings']["n_batch"] ** 0.5))
+        reconstructions = reconstructions.cpu().numpy().transpose(1, 2, 0)
+        self.logger.experiment["val/reconstructions"].append(File.as_image(reconstructions))
+
         self.validation_step_outputs.clear()
 
     def test_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
-        loss = self.loss(y_hat, y)
+
+        if(self.reconstructed):
+            y_hat, reconstructions = self(x, y)
+            loss = self.loss(y_hat, y) + 0.1 * self.reconstruct_loss(reconstructions, x)
+        else:
+            y_hat = self(x)
+            loss = self.loss(y_hat, y)
 
         y_true = y.tolist()
         y_pred = y_hat.argmax(axis=1).tolist()
@@ -162,11 +192,10 @@ class CapsuleModel(LightningModule):
 if __name__ == "__main__":
 
     with open("Capsules/config.yaml", 'r') as stream:
-        try:
-            PARAMS = yaml.safe_load(stream)
-            PARAMS = PARAMS['config2']
-        except yaml.YAMLError as exc:
-            print(exc)
+        PARAMS = yaml.safe_load(stream)
+        PARAMS = PARAMS['config3']
+        print(PARAMS)
+       
 
     neptune_logger = NeptuneLogger(
         project="kaori/Capsule",
@@ -181,12 +210,12 @@ if __name__ == "__main__":
         Train_transform = transforms.Compose([
             # transforms.ToPILImage(),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
-            transforms.Normalize(mean = (0.5,), std = (0.5,))
+            # transforms.Normalize(mean = (0.5,), std = (0.5,))
             ])
             
         Test_transform = transforms.Compose([
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
-            transforms.Normalize(mean = (0.5,), std = (0.5,))
+            # transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
 
         Train_data = Mnistread(mode='train', data_path="data", transform=Train_transform)
@@ -197,12 +226,12 @@ if __name__ == "__main__":
         
         Train_transform = transforms.Compose([
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
-            transforms.Normalize(mean = (0.5,), std = (0.5,))
+            # transforms.Normalize(mean = (0.5,), std = (0.5,))
             ])
             
         Test_transform = transforms.Compose([
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
-            transforms.Normalize(mean = (0.5,), std = (0.5,))
+            # transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
 
         Train_data = FashionMnistread(mode='train', data_path="data", transform=Train_transform)
@@ -214,7 +243,7 @@ if __name__ == "__main__":
             transforms.ToPILImage(),
             # transforms.RandomAffine(degrees=0, translate=(0.125, 0.125)),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
-            transforms.Normalize(mean = (0.5,), std = (0.5,))
+            # transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
     
         Train_data = affNistread(mode="train", data_path="data/affMnist", transform=Train_transform)
@@ -227,14 +256,14 @@ if __name__ == "__main__":
             transforms.ToPILImage(),
             # transforms.RandomAffine(degrees=0, translate=(0.125, 0.125)),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
-            transforms.Normalize(mean = (0.5,), std = (0.5,))
+            # transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
             
         Test_transform = transforms.Compose([
             transforms.ToPILImage(),
             transforms.RandomAffine(degrees=30, translate=(0.2, 0.2)),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
-            transforms.Normalize(mean = (0.5,), std = (0.5,))
+            # transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
 
         Train_data = affNistread(mode="train", data_path="data/centerMnist", aff=False, transform=Train_transform)
@@ -249,14 +278,14 @@ if __name__ == "__main__":
             transforms.RandomRotation(degrees=10),
             transforms.ColorJitter(brightness=0.2),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
             ])
             
         Test_transform = transforms.Compose([
             # transforms.ToPILImage(),
             # transforms.CenterCrop(32),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
 
         Train_data = SVHNread(mode='train', data_path='data', transform=Train_transform)
@@ -272,14 +301,14 @@ if __name__ == "__main__":
             transforms.RandomCrop(32),
             transforms.ColorJitter(brightness=0.5),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
-            transforms.Normalize(mean = (0.5,), std = (0.5,))
+            # transforms.Normalize(mean = (0.5,), std = (0.5,))
             ])
             
         Test_transform = transforms.Compose([
             transforms.ToPILImage(),
             transforms.CenterCrop(32),
             transforms.ToTensor(),# default : range [0, 255] -> [0.0,1.0]
-            transforms.Normalize(mean = (0.5,), std = (0.5,))
+            # transforms.Normalize(mean = (0.5,), std = (0.5,))
         ])
 
         Train_data = SmallNorbread(mode="train", data_path="data/smallNorb", transform=Train_transform)
