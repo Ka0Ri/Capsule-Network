@@ -103,20 +103,20 @@
 
         "config-segment": {
                 "architect_settings": {
-                        "model": "segment-conv",
+                        "model": "segment-caps",
                         "reconstructed": False,
                         "channel": 1,
-                        "n_filters": 16,
-                        "n_layers": 4,
+                        "n_filters": 10,
+                        "n_layers": 5,
                         "PrimayCaps": {"in": 1,
                                 "out": 3,
-                                "k": 5,
+                                "k": 3,
                                 "s": 2,
-                                "p": 2},
-                        "cap_dims": 4,
+                                "p": 1},
+                        "cap_dims": 2,
                         "conv": {
                         "k": [3, 3],
-                        "s": [1, 1],
+                        "s": [2, 2],
                         "p": [1, 1]
                         },
                         "transpose_conv": {
@@ -125,7 +125,7 @@
                         "p": 1
                         },
                         "routing": {"type": "dynamic",
-                                "params" : [1]}
+                                "params" : [3]}
                 },
                 "training_settings":
                 {

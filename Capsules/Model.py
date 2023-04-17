@@ -511,10 +511,19 @@ class CapConvUNet(nn.Module):
         self.n_layer = model_configs['n_layers']
         conv = model_configs['conv']
 
+        self.conv_layers = nn.ModuleList([nn.Sequential(convrelu(model_configs["channel"], n_filters, conv["k"], 1, conv["p"]), 
+                                                # nn.MaxPool2d(kernel_size=2)
+                                                )])
+        self.n_conv_layers = self.n_layer - 3
+        for i in range(self.n_conv_layers - 1):
+            self.conv_layers.append(nn.Sequential(
+                convrelu(n_filters * (2 ** i), n_filters * (2 ** (i + 1)), conv['k'], conv['s'], conv['p'])
+            ))
+
         primary_caps = model_configs['PrimayCaps']
-        self.downsamling_layers = nn.ModuleList([PrimaryCaps(primary_caps['in'], n_filters, 
-                                                        primary_caps['k'], (1, 1), primary_caps['p'], P=self.cap_dim)])
-        for i in range(self.n_layer - 1):
+        self.downsamling_layers = nn.ModuleList([PrimaryCaps(n_filters * (2 ** (self.n_conv_layers - 1)), n_filters * (2 ** self.n_conv_layers), 
+                                                        primary_caps['k'], primary_caps['s'], primary_caps['p'], P=self.cap_dim)])
+        for i in range(self.n_conv_layers, self.n_layer - 1):
             self.downsamling_layers.append(
                 EffCapLayer(n_filters * (2 ** i), n_filters * (2 ** (i + 1)), conv["k"], conv["s"], conv["p"], P=self.cap_dim)
             )
@@ -531,32 +540,33 @@ class CapConvUNet(nn.Module):
         self.upsampling_layers.append(deconvrelu(2 * n_filters, n_filters, transpose_conv["k"], transpose_conv["s"], transpose_conv["p"]))
         self.upsampling_layers.append(nn.Conv2d(2 * n_filters, model_configs["channel"], conv["k"], padding='same'))
 
-    def forward(self, x, y=None):
+    def forward(self, x, y = None):
 
-        _, c, w, h = x.shape
+        encode = []
+
+        for i in range(self.n_conv_layers):
+            x = self.conv_layers[i](x)
+            encode.append((None, x))
       
         if(self.routing_config['type'] == "dynamic"): 
             pose, a = self.downsamling_layers[0](x, sq=True)
         else:
             pose, a = self.downsamling_layers[0](x, sq=False)
 
-        encode = [(pose, a.squeeze().permute(0, 3, 1, 2))]
-
-        for i in range(1, self.n_layer):
+        encode.append((pose, a.squeeze().permute(0, 3, 1, 2)))
+       
+        for i in range(1, self.n_layer - self.n_conv_layers):
             pose, a = self.downsamling_layers[i](pose, a, self.routing_config['type'], *self.routing_config['params'])
             encode.append((pose, a.squeeze().permute(0, 3, 1, 2)))
-            print("down", pose.shape, a.shape)
+           
            
         up = encode[-1][1]
         for i in range(0, 2 * self.n_layer - 2, 2):
             up = self.upsampling_layers[i](up)
-            print("up", up.shape)
             c = encode[-(i//2) - 2][1]
             cat = torch.cat([up, c], dim=1)
-            print("cat", cat.shape)
             up = self.upsampling_layers[i+1](cat)
-            print("up", up.shape)
-          
+            
         return up
 
 
@@ -627,8 +637,8 @@ if __name__  == "__main__":
 
     architect_settings = {
         "channel": 1,
-        "n_filters": 3,
-        "n_layers": 4,
+        "n_filters": 10,
+        "n_layers": 3,
         "PrimayCaps": {"in": 1,
                     "out": 16,
                     "k": 5,
@@ -650,5 +660,6 @@ if __name__  == "__main__":
     }
 
     model = CapConvUNet(model_configs=architect_settings).cuda()
+    # print(model)
     a = torch.rand(2, 1, 256, 256).cuda()
     o = model(a)
