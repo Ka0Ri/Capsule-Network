@@ -48,6 +48,7 @@ def caps_EM_routing(v, a_in, beta_u, beta_a, _lambda, iters, g=None):
         cost_h = (beta_u + 0.5*torch.log(sigma_sq))
         logit = _lambda*(beta_a - cost_h.sum(dim=-1, keepdim=True))
         a_in = torch.sigmoid(logit).squeeze(5)
+        # a_in = torch.relu(logit).squeeze(5)
         
     r = torch.ones((b, h, w, B, C), device=a_in.device) * (1./C)
     r = r * a_in
@@ -72,6 +73,7 @@ def caps_EM_routing(v, a_in, beta_u, beta_a, _lambda, iters, g=None):
         cost_h = (beta_u + 0.5*torch.log(sigma_sq)) * r_sum
         logit = _lambda*(beta_a - cost_h.sum(dim=5, keepdim=True))
         a_out = torch.sigmoid(logit)
+        # a_out = torch.relu(logit)
 
                    
     mu = mu.view(b, h, w, C, psize)
@@ -111,12 +113,12 @@ def caps_Dynamic_routing(u, a_in, iters, g=None):
     for i in range(iters):
         c = torch.softmax(r, dim=4)
         v = squash((c * u).sum(dim=3, keepdim=True))#non-linear activation of weighted sum v = sum(c*u)
+        # v = (c * u).sum(dim=3, keepdim=True)
         if i != iters - 1:
             r = r + (u * v).sum(dim=-1, keepdim=True)#consine similarity u*v
             
     a_out = torch.norm(v, dim=-1, keepdim=True)
    
-    # a_out = torch.sigmoid(a_out)
     v = v.view(b, h, w, C, psize)
     a_out = a_out.view(b, h, w, C, 1)
     return v, a_out
@@ -167,6 +169,7 @@ def caps_Fuzzy_routing(V, a_in, beta_a, _lambda, m, iters, g=None):
     #calcuate probability
     sigma_sq = torch.sum(torch.sum(coeff * (V - g) ** 2, dim=-1, keepdim=True), dim=3, keepdim=True)
     a = torch.sigmoid(_lambda*(beta_a - 0.5*torch.log(sigma_sq)))
+    # a = torch.relu(_lambda*(beta_a - 0.5*torch.log(sigma_sq)))
 
     g = g.view(b, h, w, C, psize)
     a = a.view(b, h, w, C, 1)

@@ -29,9 +29,12 @@ class CapsuleModel(LightningModule):
             self.model = ShortcutCapsNet(model_configs=PARAMS['architect_settings'])
         elif(PARAMS['architect_settings']['model'] == "base"):
             self.model = CapNets(model_configs=PARAMS['architect_settings'])
-        elif(PARAMS['architect_settings']['model'] == "segment"):
+        elif(PARAMS['architect_settings']['model'] == "segment-caps"):
             self.segment = True
             self.model = CapConvUNet(model_configs=PARAMS['architect_settings'])
+        elif(PARAMS['architect_settings']['model'] == "segment-conv"):
+            self.segment = True
+            self.model = ConvUNet(model_configs=PARAMS['architect_settings'])
         else:
             print("Model is not implemented yet")
 
@@ -44,12 +47,16 @@ class CapsuleModel(LightningModule):
             self.loss = MarginLoss(num_classes=PARAMS['architect_settings']['n_cls'])
         elif(PARAMS['training_settings']['loss'] == "bce"):
             self.loss = BCE()
+        elif(PARAMS['training_settings']['loss'] == "mse"):
+            self.loss = MSE()
+        elif(PARAMS['training_settings']['loss'] == "dice"):
+            self.loss = DiceLoss()
         else:
             print("Loss is not implemented yet")
 
         if(PARAMS['architect_settings']['reconstructed']):
             self.reconstructed = True
-            self.reconstruct_loss = nn.MSELoss()
+            self.reconstruct_loss = MSE()
 
         self.training_step_outputs = []
         self.validation_step_outputs = []
@@ -76,7 +83,7 @@ class CapsuleModel(LightningModule):
         x, y = batch
         if(self.segment):
             y_hat = self(x)
-            loss = self.loss(y, y_hat)
+            loss = self.loss(y_hat, y)
             y_true = y.cpu().detach()
             y_pred = y_hat.cpu().detach()
             
@@ -90,7 +97,7 @@ class CapsuleModel(LightningModule):
             
             y_true = y.tolist()
             y_pred = y_hat.argmax(axis=1).tolist()
-            self.log("metrics/batch/acc", accuracy_score(accuracy_score(y_true, y_pred)), prog_bar=False)
+            self.log("metrics/batch/acc", accuracy_score(y_true, y_pred), prog_bar=False)
 
         self.log("metrics/batch/loss", loss, prog_bar=False)
         self.training_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred})
@@ -116,7 +123,7 @@ class CapsuleModel(LightningModule):
        
         if(self.segment):
             y_hat = self(x)
-            loss = self.loss(y, y_hat)
+            loss = self.loss(y_hat, y)
             y_true = y.cpu().detach()
             y_pred = torch.sigmoid(y_hat).cpu().detach()
             self.validation_step_outputs.append({"loss": loss.item(), "y_true": y_true, "y_pred": y_pred})

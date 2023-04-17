@@ -103,10 +103,10 @@
 
         "config-segment": {
                 "architect_settings": {
-                        "model": "segment",
+                        "model": "segment-conv",
                         "reconstructed": False,
                         "channel": 1,
-                        "n_filters": 4,
+                        "n_filters": 16,
                         "n_layers": 4,
                         "PrimayCaps": {"in": 1,
                                 "out": 3,
@@ -116,7 +116,7 @@
                         "cap_dims": 4,
                         "conv": {
                         "k": [3, 3],
-                        "s": [2, 2],
+                        "s": [1, 1],
                         "p": [1, 1]
                         },
                         "transpose_conv": {
@@ -125,19 +125,19 @@
                         "p": 1
                         },
                         "routing": {"type": "dynamic",
-                                "params" : [3]}
+                                "params" : [1]}
                 },
                 "training_settings":
                 {
-                        "loss": "bce",
+                        "loss": "dice",
                         "CAM": False,
-                        "lr": 0.0001,
+                        "lr": 0.001,
                         "lr_step": 10,
                         "lr_decay": 0.8,
                         "momentum": 0.9,
                         "weight_decay": 0.005,
-                        "n_epoch": 200,
-                        "n_batch": 32,
+                        "n_epoch": 100,
+                        "n_batch": 16,
                         "dataset": "CT-scan-dataset",
                         "ckpt_path": "test",
                 }

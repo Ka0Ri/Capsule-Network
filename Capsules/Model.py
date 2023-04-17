@@ -11,20 +11,72 @@ from CapsuleLayer import ConvCaps, PrimaryCaps, Caps_Dropout, LocapBlock, glocap
 
 #-----lOSS FUNCTION------
 
+
+def dice_coeff(input, target, reduce_batch_first: bool = False, epsilon: float = 1e-6):
+    # Average of Dice coefficient for all batches, or for a single mask
+    assert input.size() == target.size()
+    assert input.dim() == 3 or not reduce_batch_first
+
+    sum_dim = (-1, -2) if input.dim() == 2 or not reduce_batch_first else (-1, -2, -3)
+
+    inter = 2 * (input * target).sum(dim=sum_dim)
+    sets_sum = input.sum(dim=sum_dim) + target.sum(dim=sum_dim)
+    sets_sum = torch.where(sets_sum == 0, inter, sets_sum)
+
+    dice = (inter + epsilon) / (sets_sum + epsilon)
+    return dice.mean()
+
+
+def multiclass_dice_coeff(input, target, reduce_batch_first: bool = False, epsilon: float = 1e-6):
+    # Average of Dice coefficient for all classes
+    return dice_coeff(input.flatten(0, 1), target.flatten(0, 1), reduce_batch_first, epsilon)
+
+
+class DiceLoss(nn.Module):
+
+    def __init__(self, multiclass = False):
+        super(DiceLoss, self).__init__()
+        if(multiclass):
+            self.dice_loss = multiclass_dice_coeff
+        else:
+            self.dice_loss = dice_coeff
+
+        self.BCE = nn.BCEWithLogitsLoss()
+
+    def forward(self, seg, target):
+        bce = self.BCE(seg, target)
+        seg = torch.sigmoid(seg)
+        dice = 1 - self.dice_loss(seg, target)
+        # Dice loss (objective to minimize) between 0 and 1
+        return dice + bce
+   
+
 class BCE(nn.Module):
     """
-    Loss function
+    Binary Cross Entropy Loss function
     """
     def __init__(self, weight=None):
         super(BCE, self).__init__()
-        self.MSE = nn.MSELoss(size_average=True)
         self.BCE = nn.BCEWithLogitsLoss(weight)
 
     def forward(self, seg, labels):
         bce = self.BCE(seg, labels)
         # bce = F.binary_cross_entropy_with_logits(seg, labels)
-        # loss = self.MSE(labels, seg)
         return bce
+    
+class MSE(nn.Module):
+    """
+    Mean Squared Error Loss function
+    """
+    def __init__(self, weight=None):
+        super(MSE, self).__init__()
+        self.MSE = nn.MSELoss(size_average=True)
+        # self.BCE = nn.BCEWithLogitsLoss(weight)
+
+    def forward(self, seg, labels):
+       
+        mse = self.MSE(seg, labels)
+        return mse
 
 class MarginLoss(nn.Module):
     """
@@ -82,9 +134,9 @@ class SpreadLoss(nn.Module):
         return loss
 
 
-def convrelu(in_channels, out_channels, kernel, padding):
+def convrelu(in_channels, out_channels, kernel, stride, padding):
     return nn.Sequential(
-        nn.Conv2d(in_channels, out_channels, kernel, padding=padding),
+        nn.Conv2d(in_channels, out_channels, kernel, stride, padding=padding),
         nn.ReLU(inplace=True),
     )
 
@@ -403,26 +455,30 @@ class ConvUNet(nn.Module):
         # Contracting Path
         self.n_layer = model_configs['n_layers']
         conv = model_configs['conv']
-        self.downsamling_layers = nn.ModuleList([nn.Sequential(convrelu(model_configs["channel"], n_filters, conv["k"], conv["p"]), 
-                                                nn.MaxPool2d(kernel_size=2))])
+
+
+        self.downsamling_layers = nn.ModuleList([nn.Sequential(convrelu(model_configs["channel"], n_filters, conv["k"], 1, conv["p"]), 
+                                                # nn.MaxPool2d(kernel_size=2)
+                                                )])
         for i in range(self.n_layer - 1):
             self.downsamling_layers.append(nn.Sequential(
-                convrelu(n_filters * (2 ** i), n_filters * (2 ** (i + 1)), conv["k"], conv["p"]),
-                nn.MaxPool2d(kernel_size=2))
+                nn.MaxPool2d(kernel_size=2),
+                convrelu(n_filters * (2 ** i), n_filters * (2 ** (i + 1)), conv["k"], conv["s"], conv["p"]),
+                )
             )
 
        
         transpose_conv = model_configs['transpose_conv']
         self.upsampling_layers = nn.ModuleList()
-        for i in range(self.n_layer - 1, 0, -1):
+        for i in range(self.n_layer - 1, 1, -1):
            
             self.upsampling_layers.append(deconvrelu(n_filters * (2 ** i), n_filters * (2 ** (i - 1)), transpose_conv["k"], transpose_conv["s"], transpose_conv["p"]))
-            self.upsampling_layers.append(convrelu(n_filters * (2 ** i), n_filters * (2 ** (i - 1)), conv["k"], conv["p"]))
+            self.upsampling_layers.append(convrelu(n_filters * (2 ** i), n_filters * (2 ** (i - 1)), conv["k"], 1, conv["p"]))
 
         # Expansive Path
-        
-        self.upsampling_layers.append(deconvrelu(n_filters, model_configs["channel"], transpose_conv["k"], transpose_conv["s"], transpose_conv["p"]))
-        self.upsampling_layers.append(nn.Conv2d(2 * model_configs["channel"], model_configs["channel"], conv["k"], padding='same'))
+        self.upsampling_layers.append(deconvrelu(2 * n_filters, n_filters, transpose_conv["k"], transpose_conv["s"], transpose_conv["p"]))
+        self.upsampling_layers.append(nn.Conv2d(2 * n_filters, model_configs["channel"], conv["k"], padding='same'))
+        # self.out = nn.Conv2d(n_filters, model_configs["channel"], conv["k"], padding='same')
        
 
     def forward(self, x, y=None):
@@ -431,14 +487,15 @@ class ConvUNet(nn.Module):
         for i in range(self.n_layer):
             down = self.downsamling_layers[i](encode[-1])
             encode.append(down)
+           
 
         up = encode[-1]
        
-        for i in range(0, 2 * self.n_layer, 2):
+        for i in range(0, 2 * self.n_layer - 2, 2):
             up = self.upsampling_layers[i](up)
             cat = torch.cat([up, encode[-(i//2) - 2]], dim=1)
             up = self.upsampling_layers[i+1](cat)
- 
+            
         return up
 
 class CapConvUNet(nn.Module):
@@ -456,7 +513,7 @@ class CapConvUNet(nn.Module):
 
         primary_caps = model_configs['PrimayCaps']
         self.downsamling_layers = nn.ModuleList([PrimaryCaps(primary_caps['in'], n_filters, 
-                                                        primary_caps['k'], primary_caps['s'], primary_caps['p'], P=self.cap_dim)])
+                                                        primary_caps['k'], (1, 1), primary_caps['p'], P=self.cap_dim)])
         for i in range(self.n_layer - 1):
             self.downsamling_layers.append(
                 EffCapLayer(n_filters * (2 ** i), n_filters * (2 ** (i + 1)), conv["k"], conv["s"], conv["p"], P=self.cap_dim)
@@ -466,13 +523,13 @@ class CapConvUNet(nn.Module):
         # Expansive Path
         transpose_conv = model_configs['transpose_conv']
         self.upsampling_layers = nn.ModuleList()
-        for i in range(self.n_layer - 1, 0, -1):
+        for i in range(self.n_layer - 1, 1, -1):
            
             self.upsampling_layers.append(deconvrelu(n_filters * (2 ** i), n_filters * (2 ** (i - 1)), transpose_conv["k"], transpose_conv["s"], transpose_conv["p"]))
-            self.upsampling_layers.append(convrelu(n_filters * (2 ** i), n_filters * (2 ** (i - 1)), conv["k"], conv["p"]))
+            self.upsampling_layers.append(convrelu(n_filters * (2 ** i), n_filters * (2 ** (i - 1)), conv["k"], 1, conv["p"]))
 
-        self.upsampling_layers.append(deconvrelu(n_filters, model_configs["channel"], transpose_conv["k"], transpose_conv["s"], transpose_conv["p"]))
-        self.upsampling_layers.append(nn.Conv2d(2 * model_configs["channel"], model_configs["channel"], conv["k"], padding='same'))
+        self.upsampling_layers.append(deconvrelu(2 * n_filters, n_filters, transpose_conv["k"], transpose_conv["s"], transpose_conv["p"]))
+        self.upsampling_layers.append(nn.Conv2d(2 * n_filters, model_configs["channel"], conv["k"], padding='same'))
 
     def forward(self, x, y=None):
 
@@ -483,20 +540,23 @@ class CapConvUNet(nn.Module):
         else:
             pose, a = self.downsamling_layers[0](x, sq=False)
 
-        encode = [(x, x), (pose, a.squeeze().permute(0, 3, 1, 2))]
+        encode = [(pose, a.squeeze().permute(0, 3, 1, 2))]
 
         for i in range(1, self.n_layer):
             pose, a = self.downsamling_layers[i](pose, a, self.routing_config['type'], *self.routing_config['params'])
             encode.append((pose, a.squeeze().permute(0, 3, 1, 2)))
+            print("down", pose.shape, a.shape)
            
         up = encode[-1][1]
-        for i in range(0, 2 * self.n_layer, 2):
+        for i in range(0, 2 * self.n_layer - 2, 2):
             up = self.upsampling_layers[i](up)
+            print("up", up.shape)
             c = encode[-(i//2) - 2][1]
             cat = torch.cat([up, c], dim=1)
+            print("cat", cat.shape)
             up = self.upsampling_layers[i+1](cat)
+            print("up", up.shape)
           
- 
         return up
 
 
@@ -547,10 +607,11 @@ if __name__  == "__main__":
     # architect_settings = {
     #     "channel": 1,
     #     "n_filters": 16,
-    #     "n_layers": 2,
+    #     "n_layers": 6,
     #     "conv": {
     #         "k": 3,
-    #         "p": 1
+    #         "p": 1,
+    #         "s": 2
     #     },
     #     "transpose_conv": {
     #         "k": 3,
@@ -584,8 +645,8 @@ if __name__  == "__main__":
             "s": 2,
             "p": 1
         },
-        "routing": {"type": "fuzzy",
-                    "params" : [3, 0.01]}
+        "routing": {"type": "dynamic",
+                    "params" : [3]}
     }
 
     model = CapConvUNet(model_configs=architect_settings).cuda()
