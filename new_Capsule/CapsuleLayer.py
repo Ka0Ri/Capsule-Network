@@ -1,13 +1,12 @@
 """
-Implement Capsule Layers: (PrimaryCaps, ConvCap), (LocapBlock, glocapBlock, CapLayer) - Shortcut Routing
+Implement Capsule Layers: (PrimaryCaps, ConvCap, EfficientCaps), 
 Authors: dtvu1707@gmail.com
 """
 
 import torch
 import torch.nn as nn
-from Routing import squash, CapsuleRouting
+from .Routing import squash, CapsuleRouting
 import numpy as np
-
 
 #-----Conventional Layer------
 
@@ -53,7 +52,7 @@ class PrimaryCaps(nn.Module):
         if(sq):
             p = squash(p)
 
-        a = torch.relu(a) 
+        a = torch.relu(a.squeeze()) 
         return p, a
     
 
@@ -170,7 +169,7 @@ class ConvCaps(nn.Module):
         # patching
         p_in, oh, ow = self.pactching(x)
         a_in, _, _ = self.pactching(a)
-        a_in = a_in.squeeze()
+        a_in = a_in.squeeze(2)
         v = self.voting(p_in)
 
         #Routing
@@ -220,7 +219,7 @@ class CapLayer(nn.Module):
         self.W = nn.Conv3d(in_channels = B, out_channels = C * P, 
             kernel_size = (P , K, K), stride=(P, S, S), padding=(0, padding, padding), groups=groups, bias=bias)
 
-        self.apply(self._init_weights)
+        # self.apply(self._init_weights)
 
     def _init_weights(self, module):
         if(isinstance(module, nn.Conv3d)):
@@ -278,7 +277,7 @@ class EffCapLayer(nn.Module):
         self.a_dw = nn.Sequential(
             nn.Conv2d(in_channels=B, out_channels=B, kernel_size=K, stride=S, padding=padding, groups=B),
             nn.ReLU(),
-            #  nn.BatchNorm2d(B)
+            # nn.BatchNorm2d(B)
         )
         
         self.W_ij = torch.empty(1, self.B, self.C, self.P, self.P)
@@ -319,7 +318,7 @@ class EffCapLayer(nn.Module):
         else:
             raise NotImplementedError('{} not implemented.'.format(weight_init))
         
-        self.routinglayer = CapsuleRouting(B = self.B, C = C, P = P, mode = args[0], iters=args[1])
+        self.routinglayer = CapsuleRouting(B = B, C = C, P = P, mode = args[0], iters=args[1])
     
 
     def forward(self, x, a):
@@ -351,6 +350,7 @@ class EffCapLayer(nn.Module):
       
         return p_out, a_out
     
+    
 if __name__ == '__main__':
 
     test_layer = EffCapLayer(32, 8, 5, 2, 2, 4, "noisy_identity", "fuzzy", 3).cuda()
@@ -360,30 +360,25 @@ if __name__ == '__main__':
     p_out, a_out = test_layer(p, a)
     print(p_out.shape, a_out.shape)
 
-    # test_layer = PrimaryCaps(A = 32, B = 32, K = 3, stride = 2, padding = 1, P = 4)
-    # p = torch.rand(2, 32, 10, 10)
-    # p_out, a_out = test_layer(p, sq=True)
-    # print(p_out.shape, a_out.shape)
+    test_layer = PrimaryCaps(A = 32, B = 32, K = 3, stride = 2, padding = 1, P = 4)
+    p = torch.rand(2, 32, 10, 10)
+    p_out, a_out = test_layer(p, sq=True)
+    print(p_out.shape, a_out.shape)
     
-    # test_layer = ConvCaps(32, 8, 3, 2, 1, 4, "noisy_identity", "dynamic", 3)
-    # p = torch.rand(2, 32, 16, 10, 10)
-    # a = torch.rand(2, 32, 10, 10)
-    # p_out, a_out = test_layer(p, a)
-    # print(p_out.shape, a_out.shape)
+    test_layer = ConvCaps(32, 8, 3, 2, 1, 4, "noisy_identity", "dynamic", 3)
+    p = torch.rand(2, 32, 16, 10, 10)
+    a = torch.rand(2, 32, 10, 10)
+    p_out, a_out = test_layer(p, a)
+    print(p_out.shape, a_out.shape)
 
-    # test_layer = CapLayer(32, 8, 3, 1, 1, 4)
-    # p = torch.rand(2, 32, 16, 10, 10)
-    # p_out = test_layer(p)
-    # print(p_out.shape)
+    test_layer = CapLayer(32, 8, 3, 1, 1, 4)
+    p = torch.rand(2, 32, 16, 10, 10)
+    p_out = test_layer(p)
+    print(p_out.shape)
 
-    # test_layer = LocapBlock(B = 32, C = 16, K = (3, 3), stride = (2, 2), padding = (1, 1), P = 4)
-    # p = torch.rand(2, 10, 10, 32, 16)
-    # p_out, a_out = test_layer(p)
-    # print(p_out.shape, a_out.shape)
 
-    # global_test_layer = glocapBlock(B = 32, C = 10, P=4)
-    # g = torch.rand(2, 10, 16)
-    # p_out, a_out = global_test_layer(p_out, g, 'fuzzy', *[3, 0.01, 2])
+    print(p_out.shape, a_out.shape)
 
-    # print(p_out.shape, a_out.shape)
    
+
+  

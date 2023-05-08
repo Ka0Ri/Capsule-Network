@@ -150,7 +150,7 @@ class CapsuleRouting(nn.Module):
         #calcuate activation
         sigma_sq = torch.sum(coeff * (u - v) ** 2, dim=3, keepdim=True)
         # a <- (b, 1, C, 1, f, f)
-        a = torch.mean(1. / (sigma_sq + self._eps), dim=1, keepdim=True)
+        a = torch.mean( -0.5*torch.log(sigma_sq), dim=1, keepdim=True)
        
         return v.squeeze(), a.squeeze()
     

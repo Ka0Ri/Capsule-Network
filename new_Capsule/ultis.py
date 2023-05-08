@@ -3,6 +3,7 @@ from torchvision.datasets.mnist import MNIST, FashionMNIST
 from torchvision.datasets import CIFAR10, SVHN
 from torchvision import transforms
 import torch
+from torch import nn
 
 import numpy as np
 import os, glob
@@ -483,6 +484,131 @@ class FashionMnistread(Dataset):
       
         images = self.transform(images)
         return images, labels
+    
+#-----lOSS FUNCTION------
+
+def dice_coeff(input, target, reduce_batch_first: bool = False, epsilon: float = 1e-6):
+    # Average of Dice coefficient for all batches, or for a single mask
+    assert input.size() == target.size()
+    assert input.dim() == 3 or not reduce_batch_first
+
+    sum_dim = (-1, -2) if input.dim() == 2 or not reduce_batch_first else (-1, -2, -3)
+
+    inter = 2 * (input * target).sum(dim=sum_dim)
+    sets_sum = input.sum(dim=sum_dim) + target.sum(dim=sum_dim)
+    sets_sum = torch.where(sets_sum == 0, inter, sets_sum)
+
+    dice = (inter + epsilon) / (sets_sum + epsilon)
+    return dice.mean()
+
+
+def multiclass_dice_coeff(input, target, reduce_batch_first: bool = False, epsilon: float = 1e-6):
+    # Average of Dice coefficient for all classes
+    return dice_coeff(input.flatten(0, 1), target.flatten(0, 1), reduce_batch_first, epsilon)
+
+
+class DiceLoss(nn.Module):
+
+    def __init__(self, multiclass = False):
+        super(DiceLoss, self).__init__()
+        if(multiclass):
+            self.dice_loss = multiclass_dice_coeff
+        else:
+            self.dice_loss = dice_coeff
+
+        self.BCE = nn.BCEWithLogitsLoss()
+
+    def forward(self, seg, target):
+        bce = self.BCE(seg, target)
+        seg = torch.sigmoid(seg)
+        dice = 1 - self.dice_loss(seg, target)
+        # Dice loss (objective to minimize) between 0 and 1
+        return dice + bce
+   
+
+class BCE(nn.Module):
+    """
+    Binary Cross Entropy Loss function
+    """
+    def __init__(self, weight=None):
+        super(BCE, self).__init__()
+        self.BCE = nn.BCEWithLogitsLoss(weight)
+
+    def forward(self, seg, labels):
+        bce = self.BCE(seg, labels)
+        # bce = F.binary_cross_entropy_with_logits(seg, labels)
+        return bce
+    
+class MSE(nn.Module):
+    """
+    Mean Squared Error Loss function
+    """
+    def __init__(self, weight=None):
+        super(MSE, self).__init__()
+        self.MSE = nn.MSELoss(size_average=True)
+        # self.BCE = nn.BCEWithLogitsLoss(weight)
+
+    def forward(self, seg, labels):
+       
+        mse = self.MSE(seg, labels)
+        return mse
+
+class MarginLoss(nn.Module):
+    """
+    Loss = T*max(0, m+ - |v|)^2 + lambda*(1-T)*max(0, |v| - max-)^2 + alpha*|x-y|
+    """
+    def __init__(self, num_classes, pos=0.9, neg=0.1, lam=0.5):
+        super(MarginLoss, self).__init__()
+        self.num_classes = num_classes
+        self.pos = pos
+        self.neg = neg
+        self.lam = lam
+
+    def forward(self, output, target):
+        # output, 128 x 10
+      
+        gt = torch.zeros(output.size(0), self.num_classes, device=target.device)
+        gt = gt.scatter_(1, target.unsqueeze(1), 1)
+        pos_part = torch.relu(self.pos - output) ** 2
+        neg_part = torch.relu(output - self.neg) ** 2
+        loss = gt * pos_part + self.lam * (1-gt) * neg_part
+        return loss.sum() / output.size(0)
+
+class CrossEntropyLoss(nn.Module):
+    '''Cross entropy loss'''
+    def __init__(self, num_classes):
+        super(CrossEntropyLoss, self).__init__()
+        self.num_classes = num_classes
+        self.loss = nn.CrossEntropyLoss()
+    
+    def forward(self, output, target):
+        # output = F.softmax(output, dim=1)
+        return self.loss(output, target)
+        
+class SpreadLoss(nn.Module):
+    '''Spread loss = |max(0, margin - (at - ai))| ^ 2'''
+    def __init__(self, num_classes, m_min=0.1, m_max=1):
+        super(SpreadLoss, self).__init__()
+        self.m_min = m_min
+        self.m_max = m_max
+        self.num_classes = num_classes
+
+    def forward(self, output, target, r=0.9):
+        b, E = output.shape
+        margin = self.m_min + (self.m_max - self.m_min)*r
+
+        gt = torch.zeros(output.size(0), self.num_classes, device=target.device)
+        gt = gt.scatter_(1, target.unsqueeze(1), 1)
+        gt = gt.bool()
+        at = torch.masked_select(output, mask=gt)
+        at = at.reshape(b, 1).repeat(1, self.num_classes)
+
+        loss = torch.relu(margin - (at - output))
+        loss = loss**2
+        loss = loss.sum() / b
+
+        return loss
+
     
 if __name__ == "__main__":
     # dataset = Mnistread(mode = "train", data_path="data")
