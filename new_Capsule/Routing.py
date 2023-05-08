@@ -90,8 +90,8 @@ class CapsuleRouting(nn.Module):
             ## v <- (b, 1, C, P * P, f, f)
             if i != self.iters - 1:
                 r = r + dot_product(u, v, dim=3)#consine similarity u*v
-                ## r <- (b, C, 1, 1, f, f)
-        a_out = torch.relu(c.mean(dim=1))
+                ## r <- (b, B, C, 1, f, f)
+        a_out = torch.relu(r.sum(dim=1))
         return v.squeeze(), a_out.squeeze()
     
     def EM(self, u, a):

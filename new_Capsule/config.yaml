@@ -16,26 +16,26 @@
                                 "s": 2,
                                 "p": 1},
                         "caps": {
-                                "init": "kaiming_uniform",
+                                "init": "xavier_uniform",
                                 "cap_dims": 4,
                                 "channels": [32, 16, 10],
                                 "k": 3,
                                 "s": 1,
                                 "p": 0,
                                 "routing": {
-                                        "type": "em",
+                                        "type": "attention",
                                         "params" : [3]}}
                 },
                 "training_settings":
                 {
-                        "loss": "spread",
+                        "loss": "ce",
                         "CAM": False,
                         "lr": 0.001,
                         "lr_step": 10,
                         "lr_decay": 0.8,
                         "momentum": 0.9,
                         "weight_decay": 0.005,
-                        "n_epoch": 50,
+                        "n_epoch": 100,
                         "n_batch": 128,
                         "dataset": "center-Mnist",
                         "ckpt_path": "test",
