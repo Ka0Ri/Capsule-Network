@@ -29,8 +29,9 @@ class PrimaryCaps(nn.Module):
     def __init__(self, A, B, K, stride, padding, P=4):
         super(PrimaryCaps, self).__init__()
 
-        self.pose = nn.Conv2d(in_channels=A, out_channels=B*(P*P +1),
-                            kernel_size=K, stride=stride, padding=padding)
+        self.pose = nn.Sequential(nn.Conv2d(in_channels=A, out_channels=B*(P*P +1),
+                            kernel_size=K, stride=stride, padding=padding),
+                            nn.Sigmoid())
 
         self.B = B
         self.P = P
@@ -39,7 +40,7 @@ class PrimaryCaps(nn.Module):
 
     def _init_weights(self, module):
         if(isinstance(module, nn.Conv2d)):
-            nn.init.xavier_uniform_(module.weight)
+            nn.init.xavier_normal_(module.weight)
             if module.bias is not None:
                 module.bias.data.zero_()
 
@@ -52,7 +53,7 @@ class PrimaryCaps(nn.Module):
         if(sq):
             p = squash(p)
 
-        a = torch.relu(a.squeeze()) 
+        a = a.squeeze()
         return p, a
     
 
@@ -276,7 +277,7 @@ class EffCapLayer(nn.Module):
         self.dw = CapLayer(B, B, K, S, padding, P, groups=B, bias=False)
         self.a_dw = nn.Sequential(
             nn.Conv2d(in_channels=B, out_channels=B, kernel_size=K, stride=S, padding=padding, groups=B),
-            nn.ReLU(),
+            nn.Sigmoid(),
             # nn.BatchNorm2d(B)
         )
         

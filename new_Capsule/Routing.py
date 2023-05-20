@@ -6,11 +6,8 @@ Authors: dtvu1707@gmail.com
 import numpy as np
 from torch import nn
 import torch
-from torch.autograd import Variable
+import math
 
-def dot_product(a, b, dim=-1, keep_dims=True):
-
-    return (a * b).sum(dim=dim, keepdim=keep_dims)
 
 def squash(s, dim=-1):
     """
@@ -18,11 +15,23 @@ def squash(s, dim=-1):
     s: unormalized capsule
     v = (|s|^2)/(1+|s|^2)*(s/|s|)
     """
-    squared_norm = (s ** 2).sum(dim=dim, keepdim=True)
+    squared_norm = (s ** 2).sum(dim=dim, keepdim=True) + 10e-6
     scale = squared_norm / (1 + squared_norm)
     v = scale * s / torch.sqrt(squared_norm)
     return v
 
+def max_min_norm(s, dim=-1):
+    norm = torch.norm(s, dim=dim, keepdim=True)
+    max_norm, _ = torch.max(norm, dim=1, keepdim=True)
+    min_norm, _ = torch.min(norm, dim=1, keepdim=True)
+    return s / (max_norm - min_norm)
+
+def stable_squash(u, dim = -1):
+    norm = torch.norm(u, dim=dim, keepdim=True) + 10e-6
+    scale = torch.softmax(norm, dim=2)
+    u = scale * u / norm
+
+    return u
 
 class CapsuleRouting(nn.Module):
     '''
@@ -41,7 +50,7 @@ class CapsuleRouting(nn.Module):
         'B = K*K*B'
         'psize = P*P'
     '''
-    def __init__(self, B, C, P=4, mode="dynamic", iters=3, lam=0.01, m=2):
+    def __init__(self, B, C, P=4, mode="dynamic", iters=3, lam=0.001, m=2):
         super().__init__()
 
         assert mode in  ["dynamic", "attention", "em", "fuzzy"], "routing method is not supported"
@@ -60,47 +69,39 @@ class CapsuleRouting(nn.Module):
             self.beta_u = nn.Parameter(torch.zeros(C, 1, 1, 1))
 
     def dynamic(self, u, a):
-        
+            
         ## r <- (b, B, C, 1, f, f)
-        r = a.unsqueeze(2).expand(-1, -1, self.C, -1, -1) * (1./self.C)
-        r = r.unsqueeze(3)
+        u = max_min_norm(u, dim=3)
+
+        b, B, C, P, f, f = u.shape
+        r = torch.zeros((b, B, C, 1, f, f), device=a.device)
+        a_in = torch.softmax(a, dim=1).unsqueeze(2).unsqueeze(3) * math.sqrt(self.C)
+        # print(a_in)
 
         for i in range(self.iters):
-            c = torch.softmax(r, dim=2)
+            c = torch.softmax(r, dim=2) * a_in
+            # c = torch.softmax(r, dim=2)
             ## c <- (b, B, C, 1, f, f)
-            v = squash(dot_product(c, u, dim=1), dim=3)#non-linear activation of weighted sum v = sum(c*u)
+            v = squash(torch.sum(c * u, dim=1, keepdim=True), dim=3) #non-linear activation of weighted sum v = sum(c*u)
             ## v <- (b, 1, C, P * P, f, f)
             if i != self.iters - 1:
-                r = r + dot_product(u, v, dim=3)#consine similarity u*v
-                ## r <- (b, C, 1, 1, f, f)
-
-        a_out = torch.norm(v, dim=3, keepdim=True)
-        return v.squeeze(), a_out.squeeze()
-    
-    def attention(self, u, a):
-        
-        ## r <- (b, B, C, 1, f, f)
-        r = a.unsqueeze(2).expand(-1, -1, self.C, -1, -1) * (1./self.C)
-        r = r.unsqueeze(3)
-
-        for i in range(self.iters):
-            c = torch.softmax(r, dim=2)
-            ## c <- (b, B, C, 1, f, f)
-            v = dot_product(c, u, dim=1) # no activation
-            ## v <- (b, 1, C, P * P, f, f)
-            if i != self.iters - 1:
-                r = r + dot_product(u, v, dim=3)#consine similarity u*v
+                r = r + torch.sum(u * v, dim=3, keepdim=True) #consine similarity u*v
                 ## r <- (b, B, C, 1, f, f)
-        a_out = torch.relu(r.sum(dim=1))
+
+        a_out = torch.norm(v, dim=3)
         return v.squeeze(), a_out.squeeze()
+            
+    
     
     def EM(self, u, a):
+
+        u = max_min_norm(u, dim=3)
 
         ln_2pi = np.log(2*np.pi)
         ## r <- (b, B, C, 1, f, f)
         r = a.unsqueeze(2).expand(-1, -1, self.C, -1, -1) * (1./self.C)
         r = r.unsqueeze(3)
-    
+
         for iter_ in range(self.iters):
 
             #E step
@@ -108,8 +109,7 @@ class CapsuleRouting(nn.Module):
                 ln_pjh = -1. * (u - mu)**2 / (2 * sigma_sq) - torch.log(sigma_sq.sqrt()) - 0.5*ln_2pi
                 ln_ap = ln_pjh.sum(dim=3, keepdim=True) + torch.log(a_out)
                 # r <- (b, B, C, 1, f, f)
-                r = torch.softmax(ln_ap, dim=2)
-                r = r * a_out
+                r = torch.softmax(ln_ap, dim=2) * a_out
             
             #M step
             r_sum = r.sum(dim=1, keepdim=True)
@@ -158,8 +158,6 @@ class CapsuleRouting(nn.Module):
 
         if(self.mode == "dynamic"):
             v, a = self.dynamic(u, a)
-        elif(self.mode == "attention"):
-            v, a = self.attention(u, a)
         elif(self.mode == "em"):
             v, a = self.EM(u, a)
         elif(self.mode == "fuzzy"):
