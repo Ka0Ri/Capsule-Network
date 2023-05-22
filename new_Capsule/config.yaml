@@ -2,7 +2,7 @@
         # hyperparams for training
         "config2": {
                 "architect_settings" : {
-                        "name": "capsconv",
+                        "name": "eff-capsconv",
                         "reconstructed": True,
                         "n_cls": 10,
                         "convs": {
@@ -23,7 +23,7 @@
                                 "s": 1,
                                 "p": 0,
                                 "routing": {
-                                        "type": "em",
+                                        "type": "fuzzy",
                                         "params" : [3]}}
                 },
                 "training_settings":

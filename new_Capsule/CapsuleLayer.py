@@ -31,7 +31,8 @@ class PrimaryCaps(nn.Module):
 
         self.pose = nn.Sequential(nn.Conv2d(in_channels=A, out_channels=B*(P*P +1),
                             kernel_size=K, stride=stride, padding=padding),
-                            nn.Sigmoid())
+                            nn.Sigmoid()
+                            )
 
         self.B = B
         self.P = P
@@ -217,8 +218,9 @@ class CapLayer(nn.Module):
         self.num_in_caps = B
         self.P = P
 
-        self.W = nn.Conv3d(in_channels = B, out_channels = C * P, 
-            kernel_size = (P , K, K), stride=(P, S, S), padding=(0, padding, padding), groups=groups, bias=bias)
+        self.W = nn.Sequential(nn.Conv3d(in_channels = B, out_channels = C * P, 
+            kernel_size = (P , K, K), stride=(P, S, S), padding=(0, padding, padding), groups=groups, bias=bias),
+            nn.Sigmoid())
 
         # self.apply(self._init_weights)
 
@@ -278,7 +280,6 @@ class EffCapLayer(nn.Module):
         self.a_dw = nn.Sequential(
             nn.Conv2d(in_channels=B, out_channels=B, kernel_size=K, stride=S, padding=padding, groups=B),
             nn.Sigmoid(),
-            # nn.BatchNorm2d(B)
         )
         
         self.W_ij = torch.empty(1, self.B, self.C, self.P, self.P)
