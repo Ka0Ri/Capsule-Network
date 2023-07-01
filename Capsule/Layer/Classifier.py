@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .CapsuleLayer import CapsuleHead
+from .CapsuleLayer import AdaptiveCapsuleHead
 from torchvision.models import resnet18, resnet50, resnet152, \
                                 densenet121, densenet161, densenet201, \
                                 efficientnet_v2_l, efficientnet_v2_m, efficientnet_v2_s, \
@@ -58,7 +58,7 @@ WEIGHTS = {"resnet-s": ResNet18_Weights, "resnet-m": ResNet50_Weights, "resnet-l
 
 class CapsuleWrappingClassifier(nn.Module):
     '''
-    Wrapping Classification model with Capsule head, 
+    Wrapping Classification model with Capsule head,
     The given models can be used in reference mode (is_full = True)
     with pretrained weights (is_pretrained = True)
     or fine tuning (is_freeze = False) with explicit the number of classes 
@@ -89,10 +89,14 @@ class CapsuleWrappingClassifier(nn.Module):
         
         if not self.is_full:
             if self.is_caps:
-                self.classifier = CapsuleHead(self.num_ftrs, self.n_cls, 
-                                    self.cap_dim, self.mode, False, *self.routing_config)
+                self.classifier = AdaptiveCapsuleHead(self.num_ftrs, self.n_cls,
+                                    self.cap_dim, self.mode, True, *self.routing_config)
             else:
-                self.classifier = nn.Linear(self.num_ftrs, self.n_cls)
+                self.classifier =   nn.Sequential(
+                                            nn.AdaptiveAvgPool2d((1, 1)),
+                                            nn.Conv2d(self.num_ftrs, self.n_cls, 1),
+                                            nn.Softmax(dim=1)
+                                        )
 
     def _model_selection(self):
 
@@ -118,20 +122,22 @@ class CapsuleWrappingClassifier(nn.Module):
                 if "inception" in name: 
                     base_model.aux_logits=False
                 self.num_ftrs = base_model.fc.in_features
+                if "shufflenet" not in name:
+                    base_model.avgpool = nn.Identity()
                 base_model.fc = nn.Identity()
             elif any([x in name for x in ["vgg", "mobile", "efficient"]]):
                 if "vgg" in name: 
                     self.num_ftrs = base_model.features[-4].out_channels
                 else: 
                     self.num_ftrs = base_model.features[-1].out_channels
-                base_model.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+                base_model.avgpool = nn.Identity()
                 base_model.classifier = nn.Identity()
             elif any([x in name for x in ["densenet", "convnext"]]):
                 if "convnext" in name: 
                     self.num_ftrs = base_model.classifier[2].in_features
                 else: 
                     self.num_ftrs = base_model.classifier.in_features
-                base_model.classifier = nn.Identity()
+                base_model = base_model.features
             elif "vit" in name:
                 self.num_ftrs = base_model.heads[-1].in_features
                 base_model.heads = nn.Identity()
@@ -147,6 +153,11 @@ class CapsuleWrappingClassifier(nn.Module):
         if self.is_full:
             return feats
         else:
-            feats = torch.flatten(feats, start_dim=1)
-            return self.classifier(feats)
+            if(len(feats.shape) < 4):
+                s = int((feats.shape[1] // self.num_ftrs) ** 0.5)
+                feats = feats.reshape(-1, self.num_ftrs, s, s)
+            out = self.classifier(feats)
+            if len(out.shape) > 2:
+                out = out.squeeze(-1).squeeze(-1)
+            return out
          

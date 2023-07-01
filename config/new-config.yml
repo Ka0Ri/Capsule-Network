@@ -1,12 +1,12 @@
 logger:
-        project: "Capsule-wrap" # replace with your own
+        project: kaori/Capsule-Network # replace with your own
         api_key: YOUR API KEY # replace with your own
         tags: None
 task: classification
 architect_settings:
         name: classifier-test
         backbone:
-                name: resnet-s
+                name: swin-s
                 is_full: false
                 is_pretrained: true
                 is_freeze: false
@@ -16,8 +16,8 @@ architect_settings:
                 mode: 1
                 cap_dims: 4
                 routing:
-                        type: "dynamic"
-                        params: [3, 0.01, 1.5]
+                        type: dynamic
+                        params: [3, 1.5]
 dataset_settings:
         name: CIFAR10
         path: data/
@@ -25,7 +25,7 @@ dataset_settings:
 training_settings: 
         gpu_ids: [0]
         n_gpu: 1
-        loss: ce
+        loss: nll
         ckpt_path: "./mode/test"
         n_epoch: 5
         n_batch: 64
