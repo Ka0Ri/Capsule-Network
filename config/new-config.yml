@@ -11,19 +11,19 @@ architect_settings:
                 is_pretrained: true
                 is_freeze: false
         n_cls: 10
-        is_caps: true
+        is_caps: True
         caps:
                 mode: 1
                 cap_dims: 4
                 routing:
-                        type: dynamic
-                        params: [3, 1.5]
+                        type: fuzzy
+                        params: [2, 1.5]
 dataset_settings:
         name: CIFAR10
         path: data/
         img_size: 224
 training_settings: 
-        gpu_ids: [0]
+        gpu_ids: [1]
         n_gpu: 1
         loss: nll
         metric: accuracy

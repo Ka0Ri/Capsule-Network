@@ -565,6 +565,8 @@ class AdaptiveCapsuleHead(nn.Module):
         
         p_out, a_out = self.routinglayer(v, a)
 
+        #log softmax
+        a_out = torch.log(a_out)
         #incase output needs to be a feature maps
         if self.reduce:
             p_out = p_out.squeeze(-1).squeeze(-1)

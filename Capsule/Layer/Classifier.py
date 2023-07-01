@@ -95,7 +95,7 @@ class CapsuleWrappingClassifier(nn.Module):
                 self.classifier =   nn.Sequential(
                                             nn.AdaptiveAvgPool2d((1, 1)),
                                             nn.Conv2d(self.num_ftrs, self.n_cls, 1),
-                                            nn.Softmax(dim=1)
+                                            nn.LogSoftmax(dim=1)
                                         )
 
     def _model_selection(self):
