@@ -6,7 +6,7 @@ task: classification
 architect_settings:
         name: classifier-test
         backbone:
-                name: swin-s
+                name: resnet-s
                 is_full: false
                 is_pretrained: true
                 is_freeze: false
@@ -26,6 +26,7 @@ training_settings:
         gpu_ids: [0]
         n_gpu: 1
         loss: nll
+        metric: accuracy
         ckpt_path: "./mode/test"
         n_epoch: 5
         n_batch: 64

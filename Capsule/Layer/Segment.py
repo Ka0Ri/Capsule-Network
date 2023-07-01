@@ -1,5 +1,5 @@
 import torch.nn as nn
-from .CapsuleLayer import CapsuleHead
+from .CapsuleLayer import AdaptiveCapsuleHead
 
 from torchvision.models.segmentation import fcn_resnet50, fcn_resnet101, \
                                             deeplabv3_resnet50, deeplabv3_resnet101
@@ -76,7 +76,7 @@ class CapsuleWrappingSegment(nn.Module):
                         num_ftrs = base_model.classifier[0].in_channels
                     else: 
                         num_ftrs = base_model.classifier[0].convs[0][0].in_channels
-                    base_model.classifier = CapsuleHead(num_ftrs, self.n_cls, self.cap_dim, 
+                    base_model.classifier = AdaptiveCapsuleHead(num_ftrs, self.n_cls, self.cap_dim, 
                                                         self.mode, False, *self.routing_config)
                 else:
                     num_ftrs = base_model.classifier[-1].in_channels

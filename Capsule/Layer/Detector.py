@@ -1,5 +1,5 @@
 import torch.nn as nn
-from .CapsuleLayer import CapsuleHead
+from .CapsuleLayer import AdaptiveCapsuleHead
 
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.retinanet import RetinaNetHead
@@ -88,14 +88,14 @@ class CapsuleWrappingDetector(nn.Module):
                 num_ftrs = base_model.roi_heads.box_predictor.cls_score.in_features
                 base_model.roi_heads.box_predictor = FastRCNNPredictor(num_ftrs, self.n_cls)
                 if self.is_caps:
-                    base_model.roi_heads.box_predictor.cls_score = CapsuleHead(num_ftrs, self.n_cls, 
+                    base_model.roi_heads.box_predictor.cls_score = AdaptiveCapsuleHead(num_ftrs, self.n_cls, 
                                 self.cap_dim, self.mode, False, *self.routing_config)
             elif "retinanet" in name:
                 num_ftrs = base_model.backbone.out_channels
                 num_anchors = base_model.anchor_generator.num_anchors_per_location()
                 base_model.head = RetinaNetHead(num_ftrs, num_anchors[0], self.n_cls)
                 if self.is_caps:
-                    base_model.head.classification_head.cls_logits = CapsuleHead(num_ftrs,
+                    base_model.head.classification_head.cls_logits = AdaptiveCapsuleHead(num_ftrs,
                         self.n_cls * num_anchors[0],  self.cap_dim, self.mode, False, *self.routing_config)
             elif "ssd" in name:
                 num_ftrs = _utils.retrieve_out_channels(base_model.backbone, (320, 320))
@@ -104,14 +104,14 @@ class CapsuleWrappingDetector(nn.Module):
                 if self.is_caps:
                     cls_logits = nn.ModuleList()
                     for channels, anchors in zip(num_ftrs, num_anchors):
-                        cls_logits.append(CapsuleHead(channels, self.n_cls * anchors, 
+                        cls_logits.append(AdaptiveCapsuleHead(channels, self.n_cls * anchors, 
                                     self.cap_dim, self.mode, False, *self.routing_config))
                     base_model.head.classification_head = SSDScoringHead(cls_logits, self.n_cls)
             elif "maskrcnn" in name:
                 num_ftrs = base_model.roi_heads.box_predictor.cls_score.in_features
                 base_model.roi_heads.box_predictor = FastRCNNPredictor(num_ftrs, self.n_cls)
                 if self.is_caps:
-                    base_model.roi_heads.box_predictor.cls_score = CapsuleHead(num_ftrs, self.n_cls, 
+                    base_model.roi_heads.box_predictor.cls_score = AdaptiveCapsuleHead(num_ftrs, self.n_cls, 
                                 self.cap_dim, self.mode, False, *self.routing_config)
                 mask_num_ftrs = base_model.roi_heads.mask_predictor[0].in_channels
                 base_model.roi_heads.mask_predictor = MaskRCNNPredictor(mask_num_ftrs, 256, self.n_cls)

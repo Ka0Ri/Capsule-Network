@@ -50,7 +50,7 @@ def get_lr_scheduler_config(optimizer, settings):
 
     return {
             'scheduler': scheduler,
-            'monitor': 'metrics/batch/train_loss',
+            'monitor': f'metrics/batch/val_{settings["metric"]}',
             'interval': 'epoch',
             'frequency': 1,
         }
@@ -140,13 +140,13 @@ def get_basic_callbacks(settings):
         filename='best_model_{epoch:03d}',
         auto_insert_metric_name=False,
         save_top_k=1,
-        monitor='metrics/batch/train_loss',
+        monitor=f'metrics/epoch/val_{settings["metric"]}',
         mode='min',
         verbose=True
     )
     if settings['early_stopping']:
         early_stopping_callback = EarlyStopping(
-            monitor='metrics/batch/train_loss',  # Metric to monitor for improvement
+            monitor=f'metrics/epoch/val_{settings["metric"]}',  # Metric to monitor for improvement
             mode='min',  # Choose 'min' or 'max' depending on the metric (e.g., 'min' for loss, 'max' for accuracy)
             patience=10,  # Number of epochs with no improvement before stopping
         )
@@ -249,19 +249,17 @@ class Model(LightningModule):
             self.model = CapsuleWrappingClassifier(model_configs=self.architect_settings)
             self.train_metrics = torchmetrics.Accuracy(task='multiclass', num_classes=self.architect_settings['n_cls'])
             self.valid_metrics = torchmetrics.Accuracy(task='multiclass', num_classes=self.architect_settings['n_cls'])
-            self.metrics_name = 'accuracy'
         elif(self.task == 'segmentation'):
             self.model = CapsuleWrappingSegment(model_configs=self.architect_settings)
             self.train_metrics = torchmetrics.Dice(num_classes=self.architect_settings['n_cls'])
             self.valid_metrics = torchmetrics.Dice(num_classes=self.architect_settings['n_cls'])
-            self.metrics_name = 'dice'
         elif(self.task == 'detection'):
             self.model = CapsuleWrappingDetector(model_configs=self.architect_settings)
             self.train_metrics = MeanAveragePrecision()
             self.valid_metrics = MeanAveragePrecision()
-            self.metrics_name = 'mAP'
         else:
             raise NotImplementedError()
+        self.metrics_name = self.train_settings['metric']
 
     def setup(self, stage: str):
         if stage == "fit":
