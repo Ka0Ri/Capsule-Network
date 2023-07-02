@@ -8,12 +8,12 @@ architect_settings:
         backbone:
                 name: resnet-s
                 is_full: false
-                is_pretrained: true
+                is_pretrained: false
                 is_freeze: false
         n_cls: 10
-        is_caps: true
+        is_caps: false
         caps:
-                mode: 2
+                mode: 1
                 cap_dims: 4
                 routing:
                         type: dynamic # fuck duck fucak fyucka cyuflkc fyucl fuckl fuycl 

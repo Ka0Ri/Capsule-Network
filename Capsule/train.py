@@ -285,7 +285,8 @@ class Model(LightningModule):
             y = y.long()
             y_hat = self(x)
             loss = self.loss(y_hat, y)
-            self.train_metrics.update(y_hat.cpu(), y.cpu())
+            y_pred = torch.softmax(y_hat, dim=1)
+            self.train_metrics.update(y_pred.cpu(), y.cpu())
 
         self.log("metrics/batch/train_loss", loss, prog_bar=False)
 
@@ -310,9 +311,10 @@ class Model(LightningModule):
         else:
             y = y.long()
             loss = self.loss(y_hat, y)
+            y_pred = torch.softmax(y_hat, dim=1)
             images = (images * 255).to(torch.uint8)
             
-            return images.cpu(), y_hat.cpu(), y.cpu(), loss.item()
+            return images.cpu(), y_pred.cpu(), y.cpu(), loss.item()
 
     def validation_step(self, batch, batch_idx):
     
