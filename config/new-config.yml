@@ -11,12 +11,12 @@ architect_settings:
                 is_pretrained: true
                 is_freeze: false
         n_cls: 10
-        is_caps: True
+        is_caps: true
         caps:
-                mode: 1
+                mode: 2
                 cap_dims: 4
                 routing:
-                        type: fuzzy # fuck duck fucak fyucka cyuflkc fyucl fuckl fuycl 
+                        type: dynamic # fuck duck fucak fyucka cyuflkc fyucl fuckl fuycl 
                         params: [3, 1.5]
 dataset_settings:
         name: CIFAR10

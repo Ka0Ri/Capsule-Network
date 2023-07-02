@@ -514,9 +514,18 @@ class AdaptiveCapsuleHead(nn.Module):
             self.primary_capsule = nn.Sequential(nn.Conv2d(in_channels=B,
                             out_channels=self.B*(P*P +1), kernel_size=1, stride=1, padding=0))
         elif mode == 2:
-            self.primary_capsule = nn.Sequential(ShuffleBlock(self.B))
-        else:
-            self.primary_capsule = nn.Sequential(nn.Identity())
+            self.primary_capsule = nn.Sequential(
+                                    nn.AdaptiveAvgPool2d((1, 1)),
+                                    ShuffleBlock(self.B))
+        elif mode == 3:
+            self.primary_capsule = nn.Sequential(
+                                    nn.AdaptiveAvgPool2d((1, 1)),
+                                    nn.Identity())
+        elif mode == 4:
+            self.primary_capsule = nn.Sequential(
+                                    nn.AdaptiveAvgPool2d((1, 1)),
+                                    nn.Conv2d(in_channels=B,
+                            out_channels=self.B*(P*P +1), kernel_size=1, stride=1, padding=0))
 
         # Out ← [1, B * K * K, C, P, P] noisy_identity initialization
         self.W_ij = nn.Parameter(torch.clamp(.1*torch.eye(self.P,self.P).repeat( \
@@ -535,13 +544,13 @@ class AdaptiveCapsuleHead(nn.Module):
             activation 2D (b, C) / 5D (b, C, h, w)
         '''
         # Primary capsule
-        # x <- (b, C, h, w)
-        b, d, h, w =  x.shape
-
+        
         # p <- (b, B, P * P, h, w)
         # a <- (b, B, h, w)
         p = self.primary_capsule(x)
-        if self.mode == 1:
+        # x <- (b, C, h, w)
+        b, d, h, w =  p.shape
+        if self.mode == 1 or self.mode == 4:
             p = p.reshape(b, self.B, self.P ** 2 + 1, h, w)
             p, a = torch.split(p, [self.P **2, 1], dim=2)
             a = a.squeeze(2)

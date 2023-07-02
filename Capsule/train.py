@@ -50,7 +50,7 @@ def get_lr_scheduler_config(optimizer, settings):
 
     return {
             'scheduler': scheduler,
-            'monitor': f'metrics/batch/val_{settings["metric"]}',
+            'monitor': f'metrics/epoch/val_{settings["metric"]}',
             'interval': 'epoch',
             'frequency': 1,
         }

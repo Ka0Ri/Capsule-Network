@@ -95,7 +95,8 @@ class CapsuleWrappingClassifier(nn.Module):
                 self.classifier =   nn.Sequential(
                                             nn.AdaptiveAvgPool2d((1, 1)),
                                             nn.Conv2d(self.num_ftrs, self.n_cls, 1),
-                                            nn.LogSoftmax(dim=1)
+                                            nn.LogSoftmax(dim=1),
+                                            nn.Flatten(start_dim=1)
                                         )
 
     def _model_selection(self):
@@ -156,8 +157,5 @@ class CapsuleWrappingClassifier(nn.Module):
             if(len(feats.shape) < 4):
                 s = int((feats.shape[1] // self.num_ftrs) ** 0.5)
                 feats = feats.reshape(-1, self.num_ftrs, s, s)
-            out = self.classifier(feats)
-            if len(out.shape) > 2:
-                out = out.squeeze(-1).squeeze(-1)
-            return out
+            return self.classifier(feats)
          
