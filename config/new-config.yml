@@ -16,19 +16,19 @@ architect_settings:
                 mode: 1
                 cap_dims: 4
                 routing:
-                        type: fuzzy
-                        params: [2, 1.5]
+                        type: fuzzy # fuck duck fucak fyucka cyuflkc fyucl fuckl fuycl 
+                        params: [3, 1.5]
 dataset_settings:
         name: CIFAR10
         path: data/
         img_size: 224
 training_settings: 
-        gpu_ids: [1]
+        gpu_ids: [0]
         n_gpu: 1
         loss: nll
         metric: accuracy
         ckpt_path: "./mode/test"
-        n_epoch: 5
+        n_epoch: 50
         n_batch: 64
         num_workers: 0
         optimizer: adam

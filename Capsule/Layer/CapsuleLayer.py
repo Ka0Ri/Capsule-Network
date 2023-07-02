@@ -129,8 +129,8 @@ class CapsuleRouting(nn.Module):
         '''
         u = max_min_norm(u, dim=3)
         b, B, C, P, h, w = u.shape
-        r = torch.ones((b, B, 1, 1, h, w), device=a.device) * (1./C)
-        a = torch.unsqueeze(torch.unsqueeze(a, dim=2), dim=3)
+        r = torch.ones((b, B, C, 1, h, w), device=a.device) * (1./C)
+        a = a.unsqueeze(2).unsqueeze(3)
 
         for iter_ in range(self.iters):
             #fuzzy coeff
@@ -138,10 +138,10 @@ class CapsuleRouting(nn.Module):
                 r_n = safe_norm(u - mu, dim=3) ** (2. / (self.m - 1))
                 r_d = torch.sum(1. / r_n, dim=2, keepdim=True)
                 # r <- (b, B, C, 1, f, f)
-                r = a * (1. / (r_n * r_d)) ** (self.m)
+                r = (1. / (r_n * r_d)) ** (self.m)
                 
             #update pose
-            r_sum = torch.sum(r, dim=1, keepdim=True)
+            r_sum = torch.sum(r * a, dim=1, keepdim=True)
             # coeff <- (b, B, C, 1, f, f)
             coeff = r / (r_sum + EPS)
             # v <- (b, 1, C, P, f, f)
@@ -149,7 +149,7 @@ class CapsuleRouting(nn.Module):
             #calcuate activation
             # a <- (b, 1, C, 1, f, f)
             a = torch.softmax(r_sum, dim=2)
-          
+
         return mu.squeeze(1), a.squeeze(1).squeeze(2)
     
     def forward(self, u, a):
