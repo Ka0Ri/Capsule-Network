@@ -141,13 +141,13 @@ def get_basic_callbacks(settings):
         auto_insert_metric_name=False,
         save_top_k=1,
         monitor=f'metrics/epoch/val_{settings["metric"]}',
-        mode='min',
+        mode='max',
         verbose=True
     )
     if settings['early_stopping']:
         early_stopping_callback = EarlyStopping(
             monitor=f'metrics/epoch/val_{settings["metric"]}',  # Metric to monitor for improvement
-            mode='min',  # Choose 'min' or 'max' depending on the metric (e.g., 'min' for loss, 'max' for accuracy)
+            mode='max',  # Choose 'min' or 'max' depending on the metric (e.g., 'min' for loss, 'max' for accuracy)
             patience=10,  # Number of epochs with no improvement before stopping
         )
         return [last_ckpt_callback, best_ckpt_calllback, lr_callback, early_stopping_callback]
