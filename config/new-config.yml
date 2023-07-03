@@ -9,14 +9,14 @@ architect_settings:
                 name: resnet-s
                 is_full: false
                 is_pretrained: True
-                is_freeze: false
+                is_freeze: True
         n_cls: 200
-        is_caps: false
+        is_caps: true
         caps:
-                mode: 1
+                mode: 4
                 cap_dims: 4
                 routing:
-                        type: dynamic # fuck duck fucak fyucka cyuflkc fyucl fuckl fuycl 
+                        type: None 
                         params: [3, 1.5]
 dataset_settings:
         name: CUB2011
@@ -25,10 +25,10 @@ dataset_settings:
 training_settings: 
         gpu_ids: [0]
         n_gpu: 1
-        loss: nll
+        loss: ce
         metric: accuracy
         ckpt_path: "./mode/test"
-        n_epoch: 50
+        n_epoch: 10
         n_batch: 64
         num_workers: 0
         optimizer: adam

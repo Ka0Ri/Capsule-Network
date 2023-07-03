@@ -89,13 +89,16 @@ class CapsuleWrappingClassifier(nn.Module):
         
         if not self.is_full:
             if self.is_caps:
-                self.classifier = AdaptiveCapsuleHead(self.num_ftrs, self.n_cls,
-                                    self.cap_dim, self.mode, True, *self.routing_config)
+                self.classifier =  nn.Sequential(
+                                            AdaptiveCapsuleHead(self.num_ftrs, self.n_cls,
+                                            self.cap_dim, self.mode, True, *self.routing_config),
+                                            nn.Flatten(start_dim=1)
+                                        )
             else:
                 self.classifier =   nn.Sequential(
                                             nn.AdaptiveAvgPool2d((1, 1)),
                                             nn.Conv2d(self.num_ftrs, self.n_cls, 1),
-                                            nn.LogSoftmax(dim=1),
+                                            # nn.LogSoftmax(dim=1),
                                             nn.Flatten(start_dim=1)
                                         )
 

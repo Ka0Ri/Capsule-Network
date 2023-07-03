@@ -1,7 +1,6 @@
 from torch.utils.data import Dataset
 from torchvision.datasets import CIFAR10
 from torchvision import transforms
-from torchvision.datasets.folder import default_loader
 from torchvision.datasets.utils import download_url
 import torch
 from torch import nn

@@ -23,9 +23,9 @@ def squash(s, dim=-1):
     s: unormalized capsule
     v = (|s|^2)/(1+|s|^2)*(s/|s|)
     '''
-    squared_norm = (s ** 2).sum(dim=dim, keepdim=True)
-    scale = squared_norm / (1 + squared_norm)
-    v = scale * s / torch.sqrt(squared_norm + EPS)
+    norm = safe_norm(s, dim=dim)
+    scale = norm / (1 + norm)
+    v = scale * s / norm
     return v
 
 def max_min_norm(s, dim=-1):
@@ -58,13 +58,22 @@ class CapsuleRouting(nn.Module):
     def __init__(self, mode='dynamic', iters=3, m=1.5):
         super().__init__()
 
-        assert mode in  ['dynamic', 'em', 'fuzzy'], "routing method is not supported"
+        # assert mode in  ['dynamic', 'em', 'fuzzy', 'None'], "routing method is not supported"
         self.iters = iters
         # self._lambda = lam # for fuzzy and EM routing
         self.m = m # for fuzzy routing
         self.mode = mode
 
         self.vis = []
+
+    def zero_routing(self, u, a):
+
+        # u = max_min_norm(u, dim=3)
+        v = torch.sum(u, dim=1, keepdim=True)
+        a_out = safe_norm(v, dim=3)
+        # a_out = torch.log_softmax(a_out, dim=2)
+        return v.squeeze(1), a_out.squeeze(1).squeeze(2)
+
     
     def dynamic(self, u):
         '''
@@ -84,14 +93,14 @@ class CapsuleRouting(nn.Module):
                 r = r + torch.sum(u * v, dim=3, keepdim=True) #consine similarity u*v
                 ## r <- (b, B, C, 1, f, f)
 
-        a_out = torch.softmax(safe_norm(v, dim=3), dim=2)
+        a_out = safe_norm(v, dim=3)
         return v.squeeze(1), a_out.squeeze(1).squeeze(2)
         
     def EM(self, u, a):
         '''
         Implement as shown in the paper "Matrix Capsules with EM Routing"
         '''
-        u = max_min_norm(u, dim=3)
+        # u = max_min_norm(u, dim=3)
 
         ln_2pi = 0.5*np.log(2*np.pi)
         ## r <- (b, B, C, 1, f, f)
@@ -127,7 +136,8 @@ class CapsuleRouting(nn.Module):
         '''
         Implement as shown in the paper "Capsule Network with Shortcut Routing"
         '''
-        u = max_min_norm(u, dim=3)
+        # u = max_min_norm(u, dim=3)
+
         b, B, C, P, h, w = u.shape
         r = torch.ones((b, B, C, 1, h, w), device=a.device) * (1./C)
         a = a.unsqueeze(2).unsqueeze(3)
@@ -160,6 +170,8 @@ class CapsuleRouting(nn.Module):
             v, a = self.EM(u, a)
         elif self.mode == "fuzzy":
             v, a = self.fuzzy(u, a)
+        else:
+            v, a = self.zero_routing(u, a)
         return v, a
 
 #--------------------Capsule Layer------------------------------------------------
@@ -486,9 +498,10 @@ class AdaptiveCapsuleHead(nn.Module):
     '''
     Capsule Header combines of Primary Capsule and Linear Capsule.
     - mode:
-        1: Backbone → Feature maps (after average pooling) → Primary Capsule → Routing
-        2: Backbone → Feature maps → Split → Routing
-        3: Backbone → Feature maps → Split + Shuffle → Routing
+        1: Backbone → Feature maps  → Adaptive Primary Capsule → Routing
+        2: Backbone → AVGPool -> Feature maps → Split → Routing
+        3: Backbone → AVGPool -> Feature maps → Split + Shuffle → Routing
+        4: Backbone → AVGPool -> Feature maps → Primary Capsule → Routing
     - Arguments:
         B: number of capsule in L layer
         C: number of capsule in L + 1 layer
@@ -512,25 +525,36 @@ class AdaptiveCapsuleHead(nn.Module):
 
         if mode == 1:
             self.primary_capsule = nn.Sequential(nn.Conv2d(in_channels=B,
-                            out_channels=self.B*(P*P +1), kernel_size=1, stride=1, padding=0))
+                            out_channels=self.B*(P*P +1), kernel_size=1, stride=1, padding=0)
+                                    )
         elif mode == 2:
             self.primary_capsule = nn.Sequential(
                                     nn.AdaptiveAvgPool2d((1, 1)),
-                                    ShuffleBlock(self.B))
+                                    ShuffleBlock(self.B)
+                                    )
         elif mode == 3:
             self.primary_capsule = nn.Sequential(
                                     nn.AdaptiveAvgPool2d((1, 1)),
-                                    nn.Identity())
+                                    nn.Identity()
+                                    )
         elif mode == 4:
             self.primary_capsule = nn.Sequential(
                                     nn.AdaptiveAvgPool2d((1, 1)),
                                     nn.Conv2d(in_channels=B,
-                            out_channels=self.B*(P*P +1), kernel_size=1, stride=1, padding=0))
+                            out_channels=self.B*(P*P +1), kernel_size=1, stride=1, padding=0),
+                                    nn.ReLU(inplace=True)
+                                    )
 
+
+        self.W_ij = torch.empty(1, self.B, self.C, self.P, self.P)
+        fan_in = self.B * self.P * self.P # in_caps types * receptive field size
+        std = np.sqrt(2.) / np.sqrt(fan_in)
+        bound = np.sqrt(3.) * std
+        self.W_ij = nn.Parameter(self.W_ij.normal_(0, std))
         # Out ← [1, B * K * K, C, P, P] noisy_identity initialization
-        self.W_ij = nn.Parameter(torch.clamp(.1*torch.eye(self.P,self.P).repeat( \
-            1, self.B, self.C, 1, 1) + \
-            torch.empty(1, self.B, self.C, self.P, self.P).uniform_(0,0.01), max=1))
+        # self.W_ij = nn.Parameter(torch.clamp(.1*torch.eye(self.P,self.P).repeat( \
+        #     1, self.B, self.C, 1, 1) + \
+        #     torch.empty(1, self.B, self.C, self.P, self.P).uniform_(-0.05,0.05), max=1))
 
         assert len(args) == 3, "Wrong number of arguments"
         self.routinglayer = CapsuleRouting(mode = args[0], iters=args[1], m=args[2])
@@ -538,7 +562,7 @@ class AdaptiveCapsuleHead(nn.Module):
     def forward(self, x, get_capsules=False):
         '''
         input: 
-            tensor 2D (b, B) / 4D (b, B, h, w)
+            tensor 4D (b, B, h, w)
         output:
             capsule 3D (b, C, P*P) / 5D (b, C, P*P, h, w)
             activation 2D (b, C) / 5D (b, C, h, w)
@@ -553,19 +577,21 @@ class AdaptiveCapsuleHead(nn.Module):
         if self.mode == 1 or self.mode == 4:
             p = p.reshape(b, self.B, self.P ** 2 + 1, h, w)
             p, a = torch.split(p, [self.P **2, 1], dim=2)
+            # p = squash(p, dim=2)
             a = a.squeeze(2)
+            # a = torch.relu(a.squeeze(2))
         else:
             p = p.reshape(b, self.B, self.P ** 2, h, w)
+            # p = squash(p, dim=2)
             a = safe_norm(p, dim=2)
-
-        p = squash(p, dim=2)
-        a = torch.sigmoid(a)
+            # a = torch.relu(a)
 
         # Routing
         u = p.reshape(b, self.B, self.P, self.P, h, w)
         # Multiplying with Transformations weights matrix
         v = torch.einsum('bBijhw, bBCjk -> bBCikhw', u, self.W_ij)
         v = v.reshape(b, self.B, self.C, self.P * self.P, h, w)
+
         # adaptive pooling
         if(self.reduce):
             v = v.permute(0, 1, 4, 5, 2, 3)
@@ -573,13 +599,8 @@ class AdaptiveCapsuleHead(nn.Module):
             a = a.reshape(b, -1, 1, 1)
         
         p_out, a_out = self.routinglayer(v, a)
-
-        #log softmax
-        a_out = torch.log(a_out)
-        #incase output needs to be a feature maps
-        if self.reduce:
-            p_out = p_out.squeeze(-1).squeeze(-1)
-            a_out = a_out.squeeze(-1).squeeze(-1)
+        # log softmax
+        # a_out = torch.log(a_out)
 
         if get_capsules:
             return p_out, a_out
