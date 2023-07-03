@@ -1,11 +1,13 @@
 from torch.utils.data import Dataset
 from torchvision.datasets import CIFAR10
 from torchvision import transforms
+from torchvision.datasets.folder import default_loader
+from torchvision.datasets.utils import download_url
 import torch
 from torch import nn
 from torchvision.transforms._presets import SemanticSegmentation, ObjectDetection
 from functools import partial
-
+import pandas as pd
 import numpy as np
 import os, glob
 import PIL.Image as Image
@@ -195,144 +197,87 @@ class CIFAR10read(Dataset):
         trans_img = self.transform(images)
         return trans_img, labels, transforms.ToTensor()(images)
 
-def rgb_to_2D_label(label):
- 
-    Land = np.array(tuple(int('#8429F6'.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))) #132, 41, 246
-    Road = np.array(tuple(int('#6EC1E4'.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))) #110, 193, 228
-    Vegetation = np.array(tuple(int('FEDD3A'.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))) #254, 221, 58
-    Water = np.array(tuple(int('E2A929'.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))) #226, 169, 41
-    Building = np.array(tuple(int('#3C1098'.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))) # 60, 16, 152
-    Unlabeled = np.array(tuple(int('#9B9B9B'.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))) #155, 155, 155
 
-    label_seg = np.zeros(label.shape, dtype=np.uint8)
-    label_seg [np.all(label == Building, axis = -1)] = 2
-    label_seg [np.all(label == Unlabeled, axis = -1)] = 0
-    label_seg [np.all(label == Land, axis = -1)] = 0
-    label_seg [np.all(label == Road, axis = -1)] = 1  
-    label_seg [np.all(label == Vegetation, axis = -1)] = 0   
-    label_seg [np.all(label == Water, axis = -1)] = 0
-   
-    label_seg = label_seg[:,:,0]
-    
-    return label_seg
-class customCUBdataset (Dataset):
+class Cub2011(Dataset):
+    base_folder = 'CUB_200_2011/images'
+    url = 'https://data.caltech.edu/records/65de6-vp158'
+    filename = 'CUB_200_2011.tgz'
+    tgz_md5 = '97eceeb196236b17998738112f37df78'
+
     def __init__(self, mode, data_path, imgsize=224, transform=None):
-        self.root_dir = data_path
+        self.root = os.path.expanduser(data_path)
+        self.train = mode == 'train'
+       
+        # self._download()
+
+        if not self._check_integrity():
+            raise RuntimeError('Dataset not found or corrupted.' +
+                               ' You can use download=True to download it')
+
         self.transform = transform
-        self.image_dir = os.path.join(data_path,'images')
-        self.image_mapping = self._load_image_mapping()
-        self.label_mapping = self._load_label_mapping()
-        self.bbox_mapping = self._load_bbox_mapping ()
+        self.o_transform = transforms.Compose([transforms.Resize((imgsize, imgsize)),
+                                                transforms.ToTensor()])
+        if(self.transform == None):
+            self.transform = transforms.Compose([
+                transforms.Resize((imgsize, imgsize)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
+            ])
 
-    def _load_label_mapping (self):
-        label_mapping = {}
-        label_file = os.path.join(self.root_dir,'image_class_labels.txt')
-        with open(label_file, 'r') as file:
-            for line in file:
-                image_id, label_id = line.strip().split()
-                label_mapping[image_id] = int(label_id)
-        return label_mapping
+    def _load_metadata(self):
+        images = pd.read_csv(os.path.join(self.root, 'CUB_200_2011', 'images.txt'), sep=' ',
+                             names=['img_id', 'filepath'])
+        image_class_labels = pd.read_csv(os.path.join(self.root, 'CUB_200_2011', 'image_class_labels.txt'),
+                                         sep=' ', names=['img_id', 'target'])
+        train_test_split = pd.read_csv(os.path.join(self.root, 'CUB_200_2011', 'train_test_split.txt'),
+                                       sep=' ', names=['img_id', 'is_training_img'])
 
-    def _load_image_mapping (self):
-        image_mapping = {}
-        image_file = os.path.join(self.root_dir,'images.txt')
-        with open(image_file, 'r') as file:
-            for line in file:
-                image_id, image_name = line.strip().split()
-                image_mapping[image_id] = image_name
-        return image_mapping
+        data = images.merge(image_class_labels, on='img_id')
+        self.data = data.merge(train_test_split, on='img_id')
 
-    def _load_bbox_mapping (self):
-        bbox_mapping = {}
-        bbox_file = os.path.join(self.root_dir,'bounding_boxes.txt')
-        with open(bbox_file, 'r') as file:
-            for line in file:
-                image_id, x, y, width, height = line.strip().split()
-                bbox_mapping[image_id] = [float (x), float (y), float (width), float (height)]
-        return bbox_mapping
-
-    def __len__(self):
-        return len(self.image_mapping)
-
-    def __getitem__(self, index):
-        label = self.label_mapping[str(index)]
-        bbox = self.bbox_mapping[str(index)]
-        image_name = self.image_mapping[str(index)]
-    
-        image= Image.open(os.path.join(self.image_dir,image_name)).convert('RGB')
-
-        if self.transform:
-           image = self.transform(image)
-
-        return (image, label,bbox)
-
-
-class DubaiAerialread(Dataset):
-    '''
-    Dubai Aerial Imagery dataset:
-    https://www.kaggle.com/code/gamze1aksu/semantic-segmentation-of-aerial-imagery
-    The dataset consists of aerial imagery of Dubai obtained by MBRSC satellites and annotated 
-    with pixel-wise semantic segmentation in 6 classes. The total volume of the dataset is 72 images 
-    grouped into 6 larger tiles. The classes are:
-    Building: #3C1098
-    Land (unpaved area): #8429F6
-    Road: #6EC1E4
-    Vegetation: #FEDD3A
-    Water: #E2A929
-    Unlabeled: #9B9B9B
-    '''
-    def __init__(self, mode, data_path, transform=None, imgsize=224):
-        input_images = []
-        input_labels = []
-        self.transform = transform
-        for path, _, _ in os.walk(data_path):
-            dirname = path.split(os.path.sep)[-1]
-            if dirname == 'images':
-                input_images += [os.path.join(path, file) for file in os.listdir(path)]
-            if dirname == 'masks':
-                input_labels += [os.path.join(path, file) for file in os.listdir(path)]
-        
-        img_list = sorted(input_images)
-        mask_list = sorted(input_labels)
-
-        n = len(img_list)
-        if(mode == 'train'):
-            self.img_list = img_list[:int(n*0.8)]
-            self.mask_list = mask_list[:int(n*0.8)]
-        elif(mode == 'val'):
-            self.img_list = img_list[int(n*0.8):]
-            self.mask_list = mask_list[int(n*0.8):]
-
-        if(self.transform is None):
-            self.transformImg = partial(SemanticSegmentation, resize_size=(imgsize, imgsize))()
-            self.transformAnn = transforms.Compose([transforms.Resize((imgsize, imgsize)),
-                                                    transforms.ToTensor()])
-
-    def __len__(self):
-        return len(self.img_list)
-    
-    def __getitem__(self, idx):
-        image_path = self.img_list[idx]
-        mask_path = self.mask_list[idx]
-
-        # load image
-        image = Image.open(image_path).convert('RGB')
-        # load mask
-        mask = Image.open(mask_path).convert('RGB')
-        mask = rgb_to_2D_label(np.asarray(mask))
-
-        if self.transform is None:
-            image = self.transformImg(image)
-            mask = Image.fromarray(np.uint8(mask))
-            mask = self.transformAnn(mask)
+        if self.train:
+            self.data = self.data[self.data.is_training_img == 1]
         else:
-            image = np.asarray(image)
-            transformed = self.transform(image=image, mask=mask)
-            image = transformed["image"]
-            mask = transformed["mask"]
+            self.data = self.data[self.data.is_training_img == 0]
 
-        return image, mask.squeeze(0)
-    
+    def _check_integrity(self):
+        try:
+            self._load_metadata()
+        except Exception:
+            return False
+
+        for index, row in self.data.iterrows():
+            filepath = os.path.join(self.root, self.base_folder, row.filepath)
+            if not os.path.isfile(filepath):
+                print(filepath)
+                return False
+        return True
+
+    def _download(self):
+        import tarfile
+
+        if self._check_integrity():
+            print('Files already downloaded and verified')
+            return
+
+        download_url(self.url, self.root, self.filename, self.tgz_md5)
+
+        with tarfile.open(os.path.join(self.root, self.filename), "r:gz") as tar:
+            tar.extractall(path=self.root)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        sample = self.data.iloc[idx]
+        path = os.path.join(self.root, self.base_folder, sample.filepath)
+        target = sample.target - 1  # Targets start at 1 by default, so shift to 0
+        img = Image.open(path).convert('RGB')
+        trans_img = self.transform(img)
+
+        return trans_img, target, self.o_transform(img)
+
 #---------------------------------------lOSS FUNCTION-----------------------------------------------
 
 def dice_coeff(input, target, reduce_batch_first: bool = False, epsilon: float = 1e-6):

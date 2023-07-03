@@ -8,10 +8,10 @@ architect_settings:
         backbone:
                 name: resnet-s
                 is_full: false
-                is_pretrained: false
+                is_pretrained: True
                 is_freeze: false
-        n_cls: 10
-        is_caps: true
+        n_cls: 200
+        is_caps: false
         caps:
                 mode: 1
                 cap_dims: 4
@@ -19,11 +19,11 @@ architect_settings:
                         type: dynamic # fuck duck fucak fyucka cyuflkc fyucl fuckl fuycl 
                         params: [3, 1.5]
 dataset_settings:
-        name: CIFAR10
-        path: data/
+        name: CUB2011
+        path: data/CUB_200_2011
         img_size: 224
 training_settings: 
-        gpu_ids: [1]
+        gpu_ids: [0]
         n_gpu: 1
         loss: nll
         metric: accuracy
