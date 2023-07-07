@@ -203,6 +203,7 @@ class DataModule(LightningDataModule):
             "PennFudan": PennFudanDataset,
             "CUB2011": Cub2011,
             "CUB2011-feats": Cub2011_feats,
+            "CIFAR10-feats": CIFAR10_feats,
         }
         self.class_list = None
         self.collate_fn = None

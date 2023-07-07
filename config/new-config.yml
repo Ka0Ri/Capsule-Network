@@ -11,7 +11,7 @@ architect_settings:
                 is_pretrained: True
                 is_freeze: True
                 is_feats: True
-        n_cls: 200
+        n_cls: 10
         is_caps: true
         caps:
                 mode: 4
@@ -20,7 +20,7 @@ architect_settings:
                         type: dynamic
                         params: [3, 2]
 dataset_settings:
-        name: CUB2011-feats
+        name: CIFAR10-feats
         path: data/
         img_size: 224
 training_settings: 

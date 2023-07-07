@@ -72,8 +72,9 @@ class CapsuleRouting(nn.Module):
         # u = max_min_norm(u, dim=3)
 
         v = squash(torch.sum(u, dim=1, keepdim=True), dim=3)
-        a_out = torch.sum(v, dim=3, keepdim=True)
-        a_out = torch.softmax(a_out, dim=2)
+        # v = torch.sum(u, dim=1, keepdim=True)
+        a_out = safe_norm(v, dim=3)
+        # a_out = torch.sigmoid(a_out)
         return v.squeeze(1), a_out.squeeze(1).squeeze(2)
 
     def max_min_routing(self, u):
@@ -107,7 +108,7 @@ class CapsuleRouting(nn.Module):
         r = torch.zeros((b, B, C, 1, h, w), device=u.device)
       
         for i in range(self.iters):
-            c = C * torch.softmax(r, dim=2) #c_ij = exp(r_ij)/sum_k(exp(r_ik))
+            c = torch.softmax(r, dim=2) #c_ij = exp(r_ij)/sum_k(exp(r_ik))
             ## c <- (b, B, C, 1, f, f)
             v = squash(torch.sum(c * u, dim=1, keepdim=True), dim=3) #non-linear activation of weighted sum v = sum(c*u)
             ## v <- (b, 1, C, P * P, f, f)
@@ -150,7 +151,7 @@ class CapsuleRouting(nn.Module):
             sigma_sq = torch.sum(coeff * (u - mu)**2, dim=1, keepdim=True) + EPS
             cost_h = torch.sum(0.5*torch.log(sigma_sq) * r_sum, dim=3, keepdim=True)
             # a_out <- (b, 1, C, 1, f, f)
-            a = torch.sigmoid(- cost_h, dim=2)
+            a = torch.sigmoid(- cost_h)
         
         return mu.squeeze(1), a.squeeze(1).squeeze(2)
     
@@ -181,7 +182,7 @@ class CapsuleRouting(nn.Module):
             mu = torch.sum(coeff * u, dim=1, keepdim=True)
             #calcuate activation
             # a <- (b, 1, C, 1, f, f)
-            a = torch.sigmoid(r_sum, dim=2)
+            a = torch.sigmoid(r_sum)
 
         return mu.squeeze(1), a.squeeze(1).squeeze(2)                               
     
@@ -552,7 +553,6 @@ class AdaptiveCapsuleHead(nn.Module):
             self.primary_capsule = nn.Sequential(
                                     nn.Conv2d(in_channels=B,
                                     out_channels=self.B*(P*P +1), kernel_size=1),
-                                    nn.ReLU()
                                     )
         elif mode == 2:
             self.primary_capsule = nn.Sequential(
@@ -571,10 +571,10 @@ class AdaptiveCapsuleHead(nn.Module):
                                     out_channels=self.B*(P*P +1), kernel_size=1),
                                     )
         ## TODO: there actually no need add another layer
-        self.for_a = nn.Sequential(
-                                    # nn.AdaptiveAvgPool2d((1, 1)),
-                                    nn.Conv2d(in_channels=self.C, out_channels=self.C, kernel_size=1),
-                                    )
+        # self.for_a = nn.Sequential(
+        #                             # nn.AdaptiveAvgPool2d((1, 1)),
+        #                             nn.Conv2d(in_channels=self.C, out_channels=self.C, kernel_size=1),
+        #                             )
         
         fan_in = self.B * self.P * self.P # in_caps types * receptive field size
         std = np.sqrt(2.) / np.sqrt(fan_in)
@@ -626,7 +626,7 @@ class AdaptiveCapsuleHead(nn.Module):
 
         p_out, a_out = self.routinglayer(v, a)
         a_out = torch.log(a_out / (1 - a_out + EPS))
-        # print(a_out)
+       
         if get_capsules:
             return p_out, a_out
         else: 

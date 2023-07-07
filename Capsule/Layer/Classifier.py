@@ -101,6 +101,10 @@ class CapsuleWrappingClassifier(nn.Module):
                                             nn.AdaptiveAvgPool2d((1, 1)),
                                             nn.Conv2d(self.num_ftrs, 512, 1),
                                             nn.ReLU(),
+                                            nn.BatchNorm2d(512),
+                                            nn.Conv2d(512, 512, 1),
+                                            nn.ReLU(),
+                                            nn.BatchNorm2d(512),
                                             nn.Conv2d(512, self.n_cls, 1),
                                             # nn.LogSoftmax(dim=1),
                                             nn.Flatten(start_dim=1)
