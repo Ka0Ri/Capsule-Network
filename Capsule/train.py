@@ -196,12 +196,13 @@ class DataModule(LightningDataModule):
         self.batch_size = training_settings['n_batch']
         self.num_workers = training_settings['num_workers']
 
-        assert self.dataset in ["CIFAR10", "LungCT-Scan", "CUB2011", "PennFudan"], "Dataset not supported"
+        # assert self.dataset in ["CIFAR10", "LungCT-Scan", "CUB2011", "PennFudan"], "Dataset not supported"
         self.data_class = {
             "CIFAR10": CIFAR10read,
             "LungCT-Scan": LungCTscan,
             "PennFudan": PennFudanDataset,
             "CUB2011": Cub2011,
+            "CUB2011-feats": Cub2011_feats,
         }
         self.class_list = None
         self.collate_fn = None

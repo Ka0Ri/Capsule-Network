@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 import os, glob
 import PIL.Image as Image
+import h5py
 
 
 def normalize_image(image):
@@ -276,6 +277,43 @@ class Cub2011(Dataset):
         trans_img = self.transform(img)
 
         return trans_img, target, self.o_transform(img)
+    
+class Cub2011_feats(Dataset):
+    def __init__(self, mode, data_path, imgsize=224, transform=None):
+
+      
+       
+        if(mode == 'train'):
+            hf = h5py.File(data_path + '/CUB_ResNet_train_data.h5', 'r')
+            self.input_images = np.array(hf['data'])
+            self.input_labels = np.array(hf['label'])
+            hf.close()
+        elif(mode == 'val'):
+            hf = h5py.File(data_path + '/CUB_ResNet_test_data.h5', 'r')
+            self.input_images = np.array(hf['data'])
+            self.input_labels = np.array(hf['label'])
+        elif(mode == 'test'):
+            hf = h5py.File(data_path + '/CUB_ResNet_test_data.h5', 'r')
+            self.input_images = np.array(hf['data'])
+            self.input_labels = np.array(hf['label'])
+    
+        self.transform = transform
+        if(self.transform == None):
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+            ])
+
+    def __len__(self):
+        return (self.input_images.shape[0])
+
+    def __getitem__(self, idx):
+        images = self.input_images[idx]
+        labels = self.input_labels[idx]
+        
+        trans_img = torch.tensor(images)
+        oimg = torch.sum(trans_img, dim=0, keepdim=True)
+        
+        return trans_img, labels, oimg
 
 #---------------------------------------lOSS FUNCTION-----------------------------------------------
 

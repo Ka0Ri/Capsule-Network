@@ -171,3 +171,4 @@ data
 smallNorb
 affMnist
 centerMnist
+*.h5

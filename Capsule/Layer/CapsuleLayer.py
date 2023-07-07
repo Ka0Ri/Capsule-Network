@@ -24,7 +24,7 @@ def squash(s, dim=-1):
     v = (|s|^2)/(1+|s|^2)*(s/|s|)
     '''
     norm = safe_norm(s, dim=dim)
-    scale = norm / (1 + norm)
+    scale = norm ** 2 / (1 + norm ** 2)
     v = scale * s / norm
     return v
 
@@ -66,26 +66,48 @@ class CapsuleRouting(nn.Module):
 
         self.vis = []
 
-    def zero_routing(self, u, a):
+    def zero_routing(self, u):
 
+        # TODO: max_min_norm is not necessary, but we dont know
         # u = max_min_norm(u, dim=3)
-        v = torch.sum(u, dim=1, keepdim=True)
-        a_out = safe_norm(v, dim=3)
-        # a_out = torch.log_softmax(a_out, dim=2)
+
+        v = squash(torch.sum(u, dim=1, keepdim=True), dim=3)
+        a_out = torch.sum(v, dim=3, keepdim=True)
+        a_out = torch.softmax(a_out, dim=2)
         return v.squeeze(1), a_out.squeeze(1).squeeze(2)
 
+    def max_min_routing(self, u):
+        
+        b, B, C, P, h, w = u.shape
+        c = torch.ones((b, B, C, 1, h, w), device=u.device)
+        r = torch.zeros((b, B, C, 1, h, w), device=u.device)
+        for i in range(self.iters):
+    
+            ## c <- (b, B, C, 1, f, f)
+            v = squash(torch.sum(c * u, dim=1, keepdim=True), dim=3) #non-linear activation of weighted sum v = sum(c*u)
+            ## v <- (b, 1, C, P * P, f, f)
+            if i != self.iters - 1:
+                r = r + torch.sum(u * v, dim=3, keepdim=True) #consine similarity u*v
+                ## r <- (b, B, C, 1, f, f)
+                max_r, _ = torch.max(r, dim=2, keepdim=True)
+                min_r, _ = torch.min(r, dim=2, keepdim=True)
+                c = (r - min_r)/(max_r - min_r) #c_ij = p + (b - min(b))/(max(b) - min(b))*(q - p)
+
+        a_out = safe_norm(v, dim=3)
+        return v.squeeze(1), a_out.squeeze(1).squeeze(2)
     
     def dynamic(self, u):
         '''
         Implement as shown in the paper "Dynamic Routing between Capsules"
         '''
-        u = max_min_norm(u, dim=3)
+
         ## r <- (b, B, C, 1, f, f)
+        # u = max_min_norm(u, dim=3)
         b, B, C, P, h, w = u.shape
         r = torch.zeros((b, B, C, 1, h, w), device=u.device)
       
         for i in range(self.iters):
-            c = torch.softmax(r, dim=2) #c_ij = exp(r_ij)/sum_k(exp(r_ik))
+            c = C * torch.softmax(r, dim=2) #c_ij = exp(r_ij)/sum_k(exp(r_ik))
             ## c <- (b, B, C, 1, f, f)
             v = squash(torch.sum(c * u, dim=1, keepdim=True), dim=3) #non-linear activation of weighted sum v = sum(c*u)
             ## v <- (b, 1, C, P * P, f, f)
@@ -128,8 +150,8 @@ class CapsuleRouting(nn.Module):
             sigma_sq = torch.sum(coeff * (u - mu)**2, dim=1, keepdim=True) + EPS
             cost_h = torch.sum(0.5*torch.log(sigma_sq) * r_sum, dim=3, keepdim=True)
             # a_out <- (b, 1, C, 1, f, f)
-            a = torch.softmax(- cost_h, dim=2)
-
+            a = torch.sigmoid(- cost_h, dim=2)
+        
         return mu.squeeze(1), a.squeeze(1).squeeze(2)
     
     def fuzzy(self, u, a):
@@ -139,8 +161,9 @@ class CapsuleRouting(nn.Module):
         # u = max_min_norm(u, dim=3)
 
         b, B, C, P, h, w = u.shape
-        r = torch.ones((b, B, C, 1, h, w), device=a.device) * (1./C)
+        r = torch.ones((b, B, C, 1, h, w), device=a.device)
         a = a.unsqueeze(2).unsqueeze(3)
+        a = torch.sigmoid(a)
 
         for iter_ in range(self.iters):
             #fuzzy coeff
@@ -158,9 +181,9 @@ class CapsuleRouting(nn.Module):
             mu = torch.sum(coeff * u, dim=1, keepdim=True)
             #calcuate activation
             # a <- (b, 1, C, 1, f, f)
-            a = torch.softmax(r_sum, dim=2)
+            a = torch.sigmoid(r_sum, dim=2)
 
-        return mu.squeeze(1), a.squeeze(1).squeeze(2)
+        return mu.squeeze(1), a.squeeze(1).squeeze(2)                               
     
     def forward(self, u, a):
 
@@ -170,8 +193,10 @@ class CapsuleRouting(nn.Module):
             v, a = self.EM(u, a)
         elif self.mode == "fuzzy":
             v, a = self.fuzzy(u, a)
+        elif self.mode == "max_min":
+            v, a = self.max_min_routing(u)
         else:
-            v, a = self.zero_routing(u, a)
+            v, a = self.zero_routing(u)
         return v, a
 
 #--------------------Capsule Layer------------------------------------------------
@@ -524,8 +549,10 @@ class AdaptiveCapsuleHead(nn.Module):
         self.B = B // (P * P)
 
         if mode == 1:
-            self.primary_capsule = nn.Sequential(nn.Conv2d(in_channels=B,
-                            out_channels=self.B*(P*P +1), kernel_size=1, stride=1, padding=0)
+            self.primary_capsule = nn.Sequential(
+                                    nn.Conv2d(in_channels=B,
+                                    out_channels=self.B*(P*P +1), kernel_size=1),
+                                    nn.ReLU()
                                     )
         elif mode == 2:
             self.primary_capsule = nn.Sequential(
@@ -541,20 +568,23 @@ class AdaptiveCapsuleHead(nn.Module):
             self.primary_capsule = nn.Sequential(
                                     nn.AdaptiveAvgPool2d((1, 1)),
                                     nn.Conv2d(in_channels=B,
-                            out_channels=self.B*(P*P +1), kernel_size=1, stride=1, padding=0),
-                                    nn.ReLU(inplace=True)
+                                    out_channels=self.B*(P*P +1), kernel_size=1),
                                     )
-
-
-        self.W_ij = torch.empty(1, self.B, self.C, self.P, self.P)
+        ## TODO: there actually no need add another layer
+        self.for_a = nn.Sequential(
+                                    # nn.AdaptiveAvgPool2d((1, 1)),
+                                    nn.Conv2d(in_channels=self.C, out_channels=self.C, kernel_size=1),
+                                    )
+        
         fan_in = self.B * self.P * self.P # in_caps types * receptive field size
         std = np.sqrt(2.) / np.sqrt(fan_in)
         bound = np.sqrt(3.) * std
-        self.W_ij = nn.Parameter(self.W_ij.normal_(0, std))
+        # self.W_ij = torch.empty(1, self.B, self.C, self.P, self.P)
+        # self.W_ij = nn.Parameter(self.W_ij.normal_(0, std))
         # Out ← [1, B * K * K, C, P, P] noisy_identity initialization
-        # self.W_ij = nn.Parameter(torch.clamp(.1*torch.eye(self.P,self.P).repeat( \
-        #     1, self.B, self.C, 1, 1) + \
-        #     torch.empty(1, self.B, self.C, self.P, self.P).uniform_(-0.05,0.05), max=1))
+        self.W_ij = nn.Parameter(torch.clamp(.1*torch.eye(self.P,self.P).repeat( \
+            self.B, self.C, 1, 1).permute(0, 2, 3, 1) + \
+            torch.empty(self.B, self.P, self.P, self.C).uniform_(-bound, bound), max=1))
 
         assert len(args) == 3, "Wrong number of arguments"
         self.routinglayer = CapsuleRouting(mode = args[0], iters=args[1], m=args[2])
@@ -577,19 +607,15 @@ class AdaptiveCapsuleHead(nn.Module):
         if self.mode == 1 or self.mode == 4:
             p = p.reshape(b, self.B, self.P ** 2 + 1, h, w)
             p, a = torch.split(p, [self.P **2, 1], dim=2)
-            # p = squash(p, dim=2)
             a = a.squeeze(2)
-            # a = torch.relu(a.squeeze(2))
         else:
             p = p.reshape(b, self.B, self.P ** 2, h, w)
-            # p = squash(p, dim=2)
-            a = safe_norm(p, dim=2)
-            # a = torch.relu(a)
-
+            a = torch.sum(p, dim=2)
+        
         # Routing
         u = p.reshape(b, self.B, self.P, self.P, h, w)
         # Multiplying with Transformations weights matrix
-        v = torch.einsum('bBijhw, bBCjk -> bBCikhw', u, self.W_ij)
+        v = torch.einsum('bBijHW, BjkC -> bBCikHW', u, self.W_ij)
         v = v.reshape(b, self.B, self.C, self.P * self.P, h, w)
 
         # adaptive pooling
@@ -597,16 +623,11 @@ class AdaptiveCapsuleHead(nn.Module):
             v = v.permute(0, 1, 4, 5, 2, 3)
             v = v.reshape(b, -1, self.C, self.P * self.P, 1, 1)
             a = a.reshape(b, -1, 1, 1)
-        
-        p_out, a_out = self.routinglayer(v, a)
-        # log softmax
-        # a_out = torch.log(a_out)
 
+        p_out, a_out = self.routinglayer(v, a)
+        a_out = torch.log(a_out / (1 - a_out + EPS))
+        # print(a_out)
         if get_capsules:
             return p_out, a_out
         else: 
             return a_out
-
-        
-        
-    
