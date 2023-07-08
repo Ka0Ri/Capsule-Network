@@ -7,24 +7,24 @@ architect_settings:
         name: classifier-test
         backbone:
                 name: resnet-s
+                is_backbone: false
                 is_full: false
-                is_pretrained: True
-                is_freeze: True
-                is_feats: True
-        n_cls: 10
+                is_pretrained: false
+                is_freeze: false
+        n_cls: 200
         is_caps: true
         caps:
                 mode: 4
                 cap_dims: 4
                 routing:
-                        type: dynamic
-                        params: [3, 2]
+                        type: fuzzy
+                        params: [1, 2]
 dataset_settings:
-        name: CIFAR10-feats
+        name: CUB2011-feats
         path: data/
         img_size: 224
 training_settings: 
-        gpu_ids: [0]
+        gpu_ids: [1]
         n_gpu: 1
         loss: ce
         metric: accuracy

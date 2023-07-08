@@ -77,7 +77,7 @@ class CapsuleWrappingClassifier(nn.Module):
         self.is_full = model_configs['backbone']['is_full']
         self.is_pretrained = model_configs['backbone']['is_pretrained']
         self.is_freeze = model_configs['backbone']['is_freeze']
-        self.is_feats = model_configs['backbone']['is_feats'] # TODO: support for feats (temoporal)
+        self.is_backbone = model_configs['backbone']['is_backbone'] # TODO: support for feats (temoporal)
         self.n_cls = model_configs['n_cls']
 
         if self.is_caps:
@@ -86,8 +86,9 @@ class CapsuleWrappingClassifier(nn.Module):
             self.mode = self.caps['mode']
             self.routing_config = [self.caps['routing']['type']] + self.caps['routing']["params"]
 
-        self._model_selection()
-        
+        self.backbone = self._model_selection()
+        if not self.is_backbone:
+            self.backbone = nn.Identity()
         if not self.is_full:
             if self.is_caps:
                 self.classifier =  nn.Sequential(
@@ -99,13 +100,9 @@ class CapsuleWrappingClassifier(nn.Module):
             else:
                 self.classifier =   nn.Sequential(
                                             nn.AdaptiveAvgPool2d((1, 1)),
-                                            nn.Conv2d(self.num_ftrs, 512, 1),
+                                            nn.Conv2d(self.num_ftrs, 512 * 16, 1),
                                             nn.ReLU(),
-                                            nn.BatchNorm2d(512),
-                                            nn.Conv2d(512, 512, 1),
-                                            nn.ReLU(),
-                                            nn.BatchNorm2d(512),
-                                            nn.Conv2d(512, self.n_cls, 1),
+                                            nn.Conv2d(512 * 16, self.n_cls, 1),
                                             # nn.LogSoftmax(dim=1),
                                             nn.Flatten(start_dim=1)
                                         )
@@ -117,7 +114,6 @@ class CapsuleWrappingClassifier(nn.Module):
         assert name in MODEL.keys(), "Model %s not found" % name
 
         if self.is_pretrained:
-            print("Load pretrained model")
             base_model = MODEL[name](weights=WEIGHTS[name].IMAGENET1K_V1)
         else:
             base_model = MODEL[name](weights=None)
@@ -126,7 +122,6 @@ class CapsuleWrappingClassifier(nn.Module):
 
         # turn off gradient
         if self.is_freeze:
-            print("Freeze backbone")
             for param in base_model.parameters():
                 param.requires_grad = False
         
@@ -159,10 +154,7 @@ class CapsuleWrappingClassifier(nn.Module):
                 self.num_ftrs = base_model.head.in_features
                 base_model.head = nn.Identity()
 
-        if(self.is_feats):
-            base_model = nn.Identity()
-
-        self.backbone = base_model
+        return base_model
 
     def forward(self, x, y=None):
 
