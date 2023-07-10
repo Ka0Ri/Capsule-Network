@@ -245,16 +245,17 @@ class Model(LightningModule):
         self.architect_settings = PARAMS['architect_settings']
         self.train_settings = PARAMS['training_settings']
         self.dataset_settings = PARAMS['dataset_settings']
+        self.num_classes = self.architect_settings['head']['n_cls']
         self.task = PARAMS['task']
         # Model selection
         if(self.task == 'classification'):
             self.model = CapsuleWrappingClassifier(model_configs=self.architect_settings)
-            self.train_metrics = torchmetrics.Accuracy(task='multiclass', num_classes=self.architect_settings['n_cls'])
-            self.valid_metrics = torchmetrics.Accuracy(task='multiclass', num_classes=self.architect_settings['n_cls'])
+            self.train_metrics = torchmetrics.Accuracy(task='multiclass', num_classes= self.num_classes)
+            self.valid_metrics = torchmetrics.Accuracy(task='multiclass', num_classes= self.num_classes)
         elif(self.task == 'segmentation'):
             self.model = CapsuleWrappingSegment(model_configs=self.architect_settings)
-            self.train_metrics = torchmetrics.Dice(num_classes=self.architect_settings['n_cls'])
-            self.valid_metrics = torchmetrics.Dice(num_classes=self.architect_settings['n_cls'])
+            self.train_metrics = torchmetrics.Dice(num_classes= self.num_classes)
+            self.valid_metrics = torchmetrics.Dice(num_classes= self.num_classes)
         elif(self.task == 'detection'):
             self.model = CapsuleWrappingDetector(model_configs=self.architect_settings)
             self.train_metrics = MeanAveragePrecision()

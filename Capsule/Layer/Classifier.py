@@ -72,41 +72,44 @@ class CapsuleWrappingClassifier(nn.Module):
 
         super(CapsuleWrappingClassifier, self).__init__()
         # Parse parameters
-        self.is_caps = model_configs["is_caps"]
+        self.is_caps = model_configs['head']['is_caps']
         self.backbone_name = model_configs['backbone']['name']
         self.is_full = model_configs['backbone']['is_full']
         self.is_pretrained = model_configs['backbone']['is_pretrained']
         self.is_freeze = model_configs['backbone']['is_freeze']
         self.is_backbone = model_configs['backbone']['is_backbone'] # TODO: support for feats (temoporal)
-        self.n_cls = model_configs['n_cls']
+        self.n_cls = model_configs['head']['n_cls']
+        self.n_layers = model_configs['head']['n_layers']
+        self.n_emb = model_configs['head']['n_emb']
 
-        if self.is_caps:
-            self.caps = model_configs['caps']
-            self.cap_dim = self.caps['cap_dims']
-            self.mode = self.caps['mode']
-            self.routing_config = [self.caps['routing']['type']] + self.caps['routing']["params"]
-
+        # Load backbone
         self.backbone = self._model_selection()
         if not self.is_backbone:
             self.backbone = nn.Identity()
         if not self.is_full:
             if self.is_caps:
                 self.classifier =  nn.Sequential(
-                                            AdaptiveCapsuleHead(self.num_ftrs, self.n_cls,
-                                            self.cap_dim, self.mode, True, *self.routing_config),
-                                            # nn.LogSoftmax(dim=1),
+                                            AdaptiveCapsuleHead(self.num_ftrs, 
+                                                               head=model_configs['head']),
                                             nn.Flatten(start_dim=1)
                                         )
             else:
-                self.classifier =   nn.Sequential(
-                                            nn.AdaptiveAvgPool2d((1, 1)),
-                                            nn.Conv2d(self.num_ftrs, 512 * 16, 1),
-                                            nn.ReLU(),
-                                            nn.Conv2d(512 * 16, self.n_cls, 1),
-                                            # nn.LogSoftmax(dim=1),
-                                            nn.Flatten(start_dim=1)
-                                        )
-
+                if(self.n_layers == 1):
+                    self.classifier =  nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
+                                                 nn.Conv2d(self.num_ftrs, self.n_cls, 1),
+                                                 nn.Flatten(start_dim=1))
+                else:
+                    self.classifier =  nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
+                                                 nn.Conv2d(self.num_ftrs, self.n_emb, 1),
+                                                 nn.ReLU())
+                    for i in range(1, self.n_layers):
+                        if(i == self.n_layers - 1):
+                            self.classifier.append(nn.Conv2d(self.n_emb, self.n_cls, 1))
+                            self.classifier.append(nn.Flatten(start_dim=1))
+                        else:
+                            self.classifier.append(nn.Conv2d(self.n_emb, self.n_emb, 1))
+                            self.classifier.append(nn.ReLU())
+                    
     def _model_selection(self):
 
         # Load pretrained model
