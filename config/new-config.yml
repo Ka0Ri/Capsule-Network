@@ -13,8 +13,8 @@ architect_settings:
                 is_freeze: false
         head:
                 n_cls: 10
-                n_layers: 2
-                n_emb: 512
+                n_layers: 1
+                n_emb: 32
                 is_caps: true
                 caps:
                         reduce: false

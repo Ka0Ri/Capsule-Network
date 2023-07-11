@@ -545,14 +545,10 @@ class ShuffleBlock(nn.Module):
         g = self.groups
         return x.reshape(N,g,C//g,H,W).permute(0,2,1,3,4).reshape(N,C,H,W) 
 
-class AdaptiveCapsuleHead(nn.Module):
+class AdaptivePoolCapsuleHead(nn.Module):
     '''
     Capsule Header combines of Primary Capsule and Linear Capsule.
-    - mode:
-        1: Backbone → Feature maps  → Adaptive Primary Capsule → Routing
-        2: Backbone → AVGPool -> Feature maps → Split → Routing
-        3: Backbone → AVGPool -> Feature maps → Split + Shuffle → Routing
-        4: Backbone → AVGPool -> Feature maps → Primary Capsule → Routing
+    
     - Arguments:
         B: number of capsule in L layer
         C: number of capsule in L + 1 layer
@@ -565,7 +561,7 @@ class AdaptiveCapsuleHead(nn.Module):
         argv[2]: m for fuzzy routing
     '''
     def __init__(self, B, head):
-        super(AdaptiveCapsuleHead, self).__init__()
+        super(AdaptivePoolCapsuleHead, self).__init__()
      
   
         self.reduce = head['caps']['reduce']
@@ -617,12 +613,78 @@ class AdaptiveCapsuleHead(nn.Module):
         a = self.a_routing(x)
         a = torch.sigmoid(a)
         
-        # adaptive pooling
-        if(self.reduce):
-            p = p.permute(0, 1, 3, 4, 2)
-            p = p.reshape(b, -1, self.P * self.P, 1, 1)
-            a = a.reshape(b, -1, 1, 1)
+        print(p.shape, a.shape)
+        p_out, a_out = self.routinglayer(p, a)
+        a_out = torch.log(a_out / (1 - a_out + EPS))
+       
+        if get_capsules:
+            return p_out, a_out
+        else: 
+            return a_out
+        
+class AdaptiveCapsuleHead(nn.Module):
+    '''
+    Capsule Header combines of Primary Capsule and Linear Capsule.
+    
+    - Arguments:
+        B: number of capsule in L layer
+        C: number of capsule in L + 1 layer
+        get_capsules: Return Capsules's vector
+        P: size of a capsule
+        reduce: reduce the featrue maps before routing
+        args: arguments for routing method
+        argv[0]: routing method
+        argv[1]: number of iteration
+        argv[2]: m for fuzzy routing
+    '''
+    def __init__(self, B, head):
+        super(AdaptiveCapsuleHead, self).__init__()
+     
+  
+        self.reduce = head['caps']['reduce']
+        self.n_layers = head['n_layers']
+        n_emb = head['n_emb']
+        self.P = head['caps']['cap_dims']
 
+      
+        self.primary_capsule = nn.Sequential()
+        self.a_routing = nn.Sequential()
+        if(self.n_layers == 1):
+            self.primary_capsule.append(nn.Identity())
+            self.routinglayer = CapsuleRouting(B, head['n_cls'], head['caps'])
+        else:
+            self.primary_capsule.append(nn.Conv2d(B, n_emb, 3, padding=1))
+            self.primary_capsule.append(nn.ReLU())
+            for i in range(1, self.n_layers - 1):
+                self.primary_capsule.append(nn.Conv2d(n_emb, n_emb, 3, padding=1))
+                if(i < self.n_layers - 1):
+                    self.primary_capsule.append(nn.ReLU())
+            self.routinglayer = CapsuleRouting(n_emb, head['n_cls'], head['caps'])
+            self.a_routing.append(nn.Conv2d(B, n_emb, 3, padding=1))
+
+        self.primary_capsule.append(nn.AdaptiveAvgPool2d((self.P, self.P)))     
+        self.a_routing.append(nn.AdaptiveAvgPool2d((1, 1)))
+
+    def forward(self, x, get_capsules=False):
+        '''
+        input: 
+            tensor 4D (b, B, h, w)
+        output:
+            capsule 3D (b, C, P*P) / 5D (b, C, P*P, h, w)
+            activation 2D (b, C) / 5D (b, C, h, w)
+        '''
+        # Primary capsule
+        
+        # p <- (b, B, P * P, h, w)
+        # a <- (b, B, h, w)
+        p = self.primary_capsule(x)
+        # x <- (b, C, h, w)
+        b, d, h, w =  p.shape
+        p = p.reshape(b, d , self.P ** 2, 1, 1)
+       
+        a = self.a_routing(x)
+        a = torch.sigmoid(a)
+        
         p_out, a_out = self.routinglayer(p, a)
         a_out = torch.log(a_out / (1 - a_out + EPS))
        
