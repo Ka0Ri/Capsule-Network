@@ -67,14 +67,15 @@ class CapsuleRouting(nn.Module):
         'B = K*K*B'
         'psize = P*P'
     '''
-    def __init__(self, B, C, caps):
+    def __init__(self, B, C, P, routing):
 
         super(CapsuleRouting, self).__init__()
 
-        self.iters = caps['routing']['iters']
-        self.mode = caps['routing']['type']
-        self.temp = caps['routing']['temp']  # for fuzzy routing
-        self.P = caps['cap_dims']
+        self.iters = routing['iters']
+        self.mode = routing['type']
+        self.reduce = routing['reduce']
+        self.temp = routing['temp']  # for fuzzy routing
+        self.P = P
         self.B = B
         self.C = C
         # self._lambda = lam # for fuzzy and EM routing
@@ -92,7 +93,7 @@ class CapsuleRouting(nn.Module):
 
         # TODO: max_min_norm is not necessary, but we dont know
         # u = max_min_norm(u, dim=3)
-
+        
         v = squash(torch.sum(u, dim=1, keepdim=True), dim=3)
         # v = torch.sum(u, dim=1, keepdim=True)
         a_out = safe_norm(v, dim=3)
@@ -213,6 +214,11 @@ class CapsuleRouting(nn.Module):
         u = torch.einsum('bBijHW, BjkC -> bBCikHW', p, self.W_ij)
         u = u.reshape(-1, self.B, self.C, self.P * self.P, h, w)
 
+        if self.reduce:
+            u = u.permute(0, 1, 4, 5, 2, 3)
+            u = u.reshape(-1, self.B * h * w, self.C, self.P * self.P, 1, 1)
+            a = a.reshape(-1, self.B * h * w, 1, 1)
+
         if self.mode == "dynamic":
             v, a = self.dynamic(u)
         elif self.mode == "em":
@@ -275,131 +281,6 @@ class PrimaryCaps(nn.Module):
         return p, a
     
 
-class ConvCaps(nn.Module):
-    '''
-    2D Capsule Convolutional Layer, implemented as 
-    Args:
-        B: input number of types of capsules
-        C: output number on types of capsules
-        K: kernel size of convolution
-        P: size of pose matrix is P*P
-        stride: stride of convolution
-        padding: padding of convolution
-        weight_init: weight initialization for transformation parameters matrix
-        *args: arguments for routing method (as Routing class)
-    Shape:
-        input:  (*, B, P*P, h, w) & (*, B, h, w) 
-        output: (*, C, P*P, h', w') & (*, C, P*P,  h', w')
-        f', f' is computed the same way as convolution layer
-        parameter size is: K*K*B*C*P*P + B*P*P
-    '''
-    def __init__(self, B, C, K=3, stride=1, padding=0, P=4, weight_init='xavier_uniform', *args):
-        super(ConvCaps, self).__init__()
-        self.B = B
-        self.C = C
-        self.K = K
-        self.P = P
-        self.padding = padding
-        self.psize = self.P * self.P
-        self.stride = stride
-          
-        # the filter size is P*P*k*k
-        self.W_ij = torch.empty(1, self.B * self.K * self.K, self.C, self.P, self.P)
-
-        if weight_init.split('_')[0] == 'xavier':
-            fan_in = self.B * self.K*self.K * self.psize # in_caps types * receptive field size
-            fan_out = self.C * self.K*self.K * self.psize # out_caps types * receptive field size
-            std = np.sqrt(2. / (fan_in + fan_out))
-            bound = np.sqrt(3.) * std
-
-            if weight_init.split('_')[1] == 'normal':
-                self.W_ij = nn.Parameter(self.W_ij.normal_(0, std))
-            elif weight_init.split('_')[1] == 'uniform':
-                self.W_ij = nn.Parameter(self.W_ij.uniform_(-bound, bound))
-            else:
-                raise NotImplementedError('{} not implemented.'.format(weight_init))
-
-        elif weight_init.split('_')[0] == 'kaiming':
-            # fan_in preserves magnitude of the variance of the weights in the forward pass.
-            fan_in = self.B * self.K*self.K * self.psize # in_caps types * receptive field size
-            # fan_out has same affect as fan_in for backward pass.
-            # fan_out = self.C * self.K*self.K * self.PP # out_caps types * receptive field size
-            std = np.sqrt(2.) / np.sqrt(fan_in)
-            bound = np.sqrt(3.) * std
-
-            if weight_init.split('_')[1] == 'normal':
-                self.W_ij = nn.Parameter(self.W_ij.normal_(0, std))
-            elif weight_init.split('_')[1] == 'uniform':
-                self.W_ij = nn.Parameter(self.W_ij.uniform_(-bound, bound))
-            else:
-                raise NotImplementedError('{} not implemented.'.format(weight_init))
-        elif weight_init == 'noisy_identity' and self.psize > 2:
-            b = 0.01 # U(0,b)
-            # Out ← [1, B * K * K, C, P, P]
-            self.W_ij = nn.Parameter(torch.clamp(.1*torch.eye(self.P,self.P).repeat( \
-                1, self.B * self.K * self.K, self.C, 1, 1) + \
-                torch.empty(1, self.B * self.K * self.K, self.C, self.P, self.P).uniform_(0,b), max=1))
-        else:
-            raise NotImplementedError('{} not implemented.'.format(weight_init))
-        
-        assert len(args) == 3, "Wrong number of arguments"
-        self.routinglayer = CapsuleRouting(mode=args[0], iters=args[1], m=args[2])
-
-
-    def pactching(self, x):
-        '''
-        Preparing windows for computing convolution
-        Shape:
-            Input:     (b, B, -1, h, w)        
-            Output:    (b, B, -1, h', w', K, K)
-        '''
-        if len(x.shape) < 5:
-            x = x.unsqueeze(2)
-    
-        pd = (self.padding, ) * 4
-        x = torch.nn.functional.pad(x, pd, "constant", 0)
-        K = self.K
-        stride = self.stride
-        b, B, psize, f, f = x.shape
-        oh = ow = int((f - K) / stride) + 1
-        idxs = [[(h_idx + k_idx) for k_idx in range(0, K)] for h_idx in range(0, f - K + 1, stride)]
-        x = x[:, :, :, idxs, :]
-        x = x[:, :, :, :, :, idxs]
-        x = x.permute(0, 1, 4, 6, 2, 3, 5).contiguous()
-        x = x.reshape(b, -1, psize, oh, ow)
-        return x, oh, ow
-
-    def voting(self, x):
-        '''
-        Preparing capsule data points for routing, 
-        For conv_caps:
-            Input:     (b, h, w, K*K*B, P*P)
-            Output:    (b, h, w, K*K*B, C, P*P)
-        '''
-        C = self.C
-        P = self.P
-        b, B, psize, f, f = x.shape #b: fix dimmension, B, random dimmension
-        x = x.reshape(b, B, P, P, f, f)
-        v = torch.einsum('bBijhw, bBCjk -> bBCikhw', x, self.W_ij)
-        v = v.reshape(b, B, C, psize, f, f)
-        return v
-
-    def forward(self, x, a):
-        '''
-        Forward pass
-        '''
-        # patching
-        p_in, oh, ow = self.pactching(x)
-        a_in, _, _ = self.pactching(a)
-        a_in = a_in.squeeze(2)
-        v = self.voting(p_in)
-
-        #Routing
-        p_out, a_out = self.routinglayer(v, a_in)
-        
-        return p_out, a_out
-    
-
 class Caps_Dropout(nn.Module):
     '''
     Custom Dropout for Capsule Network
@@ -420,116 +301,6 @@ class Caps_Dropout(nn.Module):
         return X
 
     
-class EffCapLayer(nn.Module):
-    '''
-       Efficient depth-wise convolution to predict higher capsules
-    Input of a local block is a capsule at Lth layer
-    Output of a local block is a capsule at (L+1)th layer
-    Implemented by CapLayer module, so the arguments are set according to CapLayer's arguments
-    This Layer contains 2 operations, Depth-wise convolution acts on each Capsule Styles (channels) without routing
-    and Pointwise convolution acts on each unit with routing mechanism.
-        B: number of capsule in L layer
-        C: number of capsule in L + 1 layer
-        K: 2D kernel size
-        S: stride when doing convolution
-        padding: padding when doing convolution
-        P: size of a capsule
-        groups: group convolution
-        weight_init: weight init method ["xavier_uniform", "xavier_normal", 
-                        "kaiming_normal", "kaiming_uniform", "noisy_identity"]
-        args: arguments for routing method
-        argv[0]: routing method
-        argv[1]: number of iteration
-        argv[2]: lambda for fuzzy/em routing
-        argv[3]: m for fuzzy routing
-    '''
-    def __init__(self, B, C, K, S=1, padding=0, P=4, weight_init='xavier_uniform', *args):
-        super(EffCapLayer, self).__init__()
-
-        self.P = P
-        self.C = C
-        self.B = B
-        self.psize = P * P
-
-        self.dw = nn.Sequential(
-            nn.Conv3d(in_channels = B, out_channels = B * P, kernel_size = (P , K, K), 
-                      stride=(P, S, S), padding=(0, padding, padding), 
-            groups=B, bias=False),
-            nn.Sigmoid())
-
-        self.a_dw = nn.Sequential(
-            nn.Conv2d(in_channels=B, out_channels=B, kernel_size=K, 
-                      stride=S, padding=padding, groups=B),
-            nn.Sigmoid(),
-        )
-        
-        self.W_ij = torch.empty(1, self.B, self.C, self.P, self.P)
-
-        if weight_init.split('_')[0] == 'xavier':
-            fan_in = self.B * self.psize # in_caps types * receptive field size
-            fan_out = self.C * self.psize # out_caps types * receptive field size
-            std = np.sqrt(2. / (fan_in + fan_out))
-            bound = np.sqrt(3.) * std
-
-            if weight_init.split('_')[1] == 'normal':
-                self.W_ij = nn.Parameter(self.W_ij.normal_(0, std))
-            elif weight_init.split('_')[1] == 'uniform':
-                self.W_ij = nn.Parameter(self.W_ij.uniform_(-bound, bound))
-            else:
-                raise NotImplementedError('{} not implemented.'.format(weight_init))
-
-        elif weight_init.split('_')[0] == 'kaiming':
-            # fan_in preserves magnitude of the variance of the weights in the forward pass.
-            fan_in = self.B * self.psize # in_caps types * receptive field size
-            # fan_out has same affect as fan_in for backward pass.
-            # fan_out = self.C * self.K*self.K * self.PP # out_caps types * receptive field size
-            std = np.sqrt(2.) / np.sqrt(fan_in)
-            bound = np.sqrt(3.) * std
-
-            if weight_init.split('_')[1] == 'normal':
-                self.W_ij = nn.Parameter(self.W_ij.normal_(0, std))
-            elif weight_init.split('_')[1] == 'uniform':
-                self.W_ij = nn.Parameter(self.W_ij.uniform_(-bound, bound))
-            else:
-                raise NotImplementedError('{} not implemented.'.format(weight_init))
-        elif weight_init == 'noisy_identity' and self.psize > 2:
-            b = 0.01 # U(0,b)
-            # Out ← [1, B * K * K, C, P, P]
-            self.W_ij = nn.Parameter(torch.clamp(.1*torch.eye(self.P,self.P).repeat( \
-                1, self.B, self.C, 1, 1) + \
-                torch.empty(1, self.B, self.C, self.P, self.P).uniform_(0,b), max=1))
-        else:
-            raise NotImplementedError('{} not implemented.'.format(weight_init))
-        
-        assert len(args) == 3, "Wrong number of arguments"
-        self.routinglayer = CapsuleRouting(mode=args[0], iters=args[1], m=args[2])
-    
-
-    def forward(self, x, a):
-        '''  
-        Input:
-            x (*, B, P, h, w): is input capsules
-            a: activation (*, B, h, w)
-            B: number of capsules, P * P: dimmension of a capsule
-            h, w: spatial size
-        return:
-            p_out: (*, C, P*P, h', w') is output capsules
-            a_out: (*, C, h', w')
-        h', w' is computed the same way as convolution layer
-        '''
-
-        u = self.dw(x)
-        b, B, P, h, w = u.shape
-        B = B // self.P
-        u = u.reshape(b, B, P, P, h, w)
-        v = torch.einsum('bBijhw, bBCjk -> bBCikhw', u, self.W_ij)
-        v = v.reshape(b, B, self.C, P * P, h, w)
-       
-        a_in = self.a_dw(a)
-        #Routing
-        p_out, a_out = self.routinglayer(v, a_in)
-      
-        return p_out, a_out
 
 class ShuffleBlock(nn.Module):
     '''
@@ -545,125 +316,96 @@ class ShuffleBlock(nn.Module):
         g = self.groups
         return x.reshape(N,g,C//g,H,W).permute(0,2,1,3,4).reshape(N,C,H,W) 
 
-class AdaptivePoolCapsuleHead(nn.Module):
+class ProjectionHead(nn.Module):
     '''
-    Capsule Header combines of Primary Capsule and Linear Capsule.
-    
-    - Arguments:
-        B: number of capsule in L layer
-        C: number of capsule in L + 1 layer
-        get_capsules: Return Capsules's vector
-        P: size of a capsule
-        reduce: reduce the featrue maps before routing
-        args: arguments for routing method
-        argv[0]: routing method
-        argv[1]: number of iteration
-        argv[2]: m for fuzzy routing
+    Projection Head for Primary Capsule
+    args:
+        in_channels: input channels
+        out_channels: output channels
+        n_layers: number of layers
+        pooling: type of pooling
+        TODO: add more oftion or just simply use?
     '''
-    def __init__(self, B, head):
-        super(AdaptivePoolCapsuleHead, self).__init__()
-     
-  
-        self.reduce = head['caps']['reduce']
-        self.n_layers = head['n_layers']
-        n_emb = head['n_emb']
-        self.P = head['caps']['cap_dims']
 
-        assert B % (self.P * self.P) == 0, "channel is not divisible by P * P"
-        self.B = B // (self.P * self.P)
-        assert n_emb % (self.P * self.P) == 0, "embedding is not divisible by P * P"
-        self.n_emb = n_emb // (self.P * self.P)
-      
-        self.primary_capsule = nn.Sequential()
-        self.a_routing = nn.Sequential()
-        if(self.reduce):
-            self.primary_capsule.append(nn.AdaptiveAvgPool2d((1, 1)))
-            self.a_routing.append(nn.AdaptiveAvgPool2d((1, 1)))
-        if(self.n_layers == 1):
-            self.primary_capsule.append(nn.Identity())
-            self.routinglayer = CapsuleRouting(self.B, head['n_cls'], head['caps'])
+    def __init__(self, in_channels, out_channels, shuffle=False, n_layers=2, pooling=None):
+        super(ProjectionHead, self).__init__()
+
+        in_channels = in_channels
+        out_channels = out_channels
+        n_layers = n_layers
+        pooling = pooling
+        k_size = 3
+        p_size = 1
+
+        self.projection = nn.Sequential()
+        
+        if(pooling == 'avg'):
+            self.projection.add_module('avgpool', nn.AdaptiveAvgPool2d((1,1)))
+            k_size = 1
+            p_size = 0
+
+        if(shuffle):
+            self.projection.add_module('shuffle', ShuffleBlock(out_channels))
+        
+        if(n_layers == 1):
+            self.projection.add_module('identity', nn.Identity())
         else:
-            self.primary_capsule.append(nn.Conv2d(B, n_emb, 1))
-            self.primary_capsule.append(nn.ReLU())
-            for i in range(1, self.n_layers - 1):
-                self.primary_capsule.append(nn.Conv2d(n_emb, n_emb, 1))
-                if(i < self.n_layers - 1):
-                    self.primary_capsule.append(nn.ReLU())
-            self.routinglayer = CapsuleRouting(self.n_emb, head['n_cls'], head['caps'])
+            for i in range(n_layers):
+                if(i == 0):
+                    self.projection.add_module('conv'+str(i), nn.Conv2d(in_channels, out_channels, kernel_size=k_size, padding=p_size))
+                    self.projection.add_module('relu'+str(i), nn.ReLU())
+                elif(i == n_layers - 1):
+                    self.projection.add_module('conv'+str(i), nn.Conv2d(out_channels, out_channels, kernel_size=k_size, padding=p_size))
+                else:
+                    self.projection.add_module('conv'+str(i), nn.Conv2d(out_channels, out_channels, kernel_size=k_size, padding=p_size))
+                    self.projection.add_module('relu'+str(i), nn.ReLU())
 
-        self.a_routing.append(nn.Conv2d(B, self.B, 1))
+    def forward(self, x):
+        return self.projection(x)
 
-    def forward(self, x, get_capsules=False):
-        '''
-        input: 
-            tensor 4D (b, B, h, w)
-        output:
-            capsule 3D (b, C, P*P) / 5D (b, C, P*P, h, w)
-            activation 2D (b, C) / 5D (b, C, h, w)
-        '''
-        # Primary capsule
-        
-        # p <- (b, B, P * P, h, w)
-        # a <- (b, B, h, w)
-        p = self.primary_capsule(x)
-        # x <- (b, C, h, w)
-        b, d, h, w =  p.shape
-        p = p.reshape(b, self.B , self.P ** 2, h, w)
-       
-        a = self.a_routing(x)
-        a = torch.sigmoid(a)
-        
-        print(p.shape, a.shape)
-        p_out, a_out = self.routinglayer(p, a)
-        a_out = torch.log(a_out / (1 - a_out + EPS))
-       
-        if get_capsules:
-            return p_out, a_out
-        else: 
-            return a_out
-        
+
 class AdaptiveCapsuleHead(nn.Module):
     '''
     Capsule Header combines of Primary Capsule and Linear Capsule.
     
     - Arguments:
         B: number of capsule in L layer
-        C: number of capsule in L + 1 layer
-        get_capsules: Return Capsules's vector
-        P: size of a capsule
-        reduce: reduce the featrue maps before routing
-        args: arguments for routing method
-        argv[0]: routing method
-        argv[1]: number of iteration
-        argv[2]: m for fuzzy routing
+        head: head's configuration (check config file)
     '''
     def __init__(self, B, head):
         super(AdaptiveCapsuleHead, self).__init__()
-     
-  
-        self.reduce = head['caps']['reduce']
-        self.n_layers = head['n_layers']
+    
+        # self.reduce = head['caps']['reduce']
+        n_layers = head['n_layers']
         n_emb = head['n_emb']
+        pooling = head['caps']['pooling']
+        shuffle = head['caps']['shuffle']
         self.P = head['caps']['cap_dims']
+        self.cap_style = head['caps']['cap_style']
+       
+        assert n_emb % (self.P * self.P) == 0, "embedding is not divisible by P * P"
+        assert B % (self.P * self.P) == 0, "channel is not divisible by P * P"
 
-      
         self.primary_capsule = nn.Sequential()
-        self.a_routing = nn.Sequential()
-        if(self.n_layers == 1):
-            self.primary_capsule.append(nn.Identity())
-            self.routinglayer = CapsuleRouting(B, head['n_cls'], head['caps'])
-        else:
-            self.primary_capsule.append(nn.Conv2d(B, n_emb, 3, padding=1))
-            self.primary_capsule.append(nn.ReLU())
-            for i in range(1, self.n_layers - 1):
-                self.primary_capsule.append(nn.Conv2d(n_emb, n_emb, 3, padding=1))
-                if(i < self.n_layers - 1):
-                    self.primary_capsule.append(nn.ReLU())
-            self.routinglayer = CapsuleRouting(n_emb, head['n_cls'], head['caps'])
-            self.a_routing.append(nn.Conv2d(B, n_emb, 3, padding=1))
+        self.primary_capsule.add_module('projection', 
+                                        ProjectionHead(B, n_emb, shuffle, n_layers, pooling))
+        
+        if(self.cap_style == 'hw'):
+            self.B = B  * (n_layers == 1) + n_emb * (n_layers > 1)
+            self.primary_capsule.add_module('pooling', nn.AdaptiveAvgPool2d((self.P, self.P)))
+        elif(self.cap_style == 'c'):
+            self.B = (B // (self.P ** 2)) * (n_layers == 1) + (n_emb // (self.P ** 2)) * (n_layers > 1) 
+            if pooling == 'avg':
+                self.primary_capsule.add_module('pooling', nn.AdaptiveAvgPool2d((1, 1)))
 
-        self.primary_capsule.append(nn.AdaptiveAvgPool2d((self.P, self.P)))     
-        self.a_routing.append(nn.AdaptiveAvgPool2d((1, 1)))
+        self.activation = nn.Sequential()
+        self.activation.add_module('projection', ProjectionHead(B, self.B, shuffle, 2, pooling))
+        if pooling == 'avg':
+            self.activation.add_module('pooling', nn.AdaptiveAvgPool2d((1, 1)))
+        self.activation.add_module('sigmoid', nn.Sigmoid())
+
+        self.routinglayer = CapsuleRouting(self.B, head['n_cls'], head['caps']['cap_dims'], head['caps']['routing'])
+          
 
     def forward(self, x, get_capsules=False):
         '''
@@ -678,13 +420,14 @@ class AdaptiveCapsuleHead(nn.Module):
         # p <- (b, B, P * P, h, w)
         # a <- (b, B, h, w)
         p = self.primary_capsule(x)
+        a = self.activation(x)
         # x <- (b, C, h, w)
         b, d, h, w =  p.shape
-        p = p.reshape(b, d , self.P ** 2, 1, 1)
+        if(self.cap_style == 'hw'):
+            p = p.reshape(b, d, self.P ** 2, 1, 1)
+        elif(self.cap_style == 'c'):
+            p = p.reshape(b, d // (self.P ** 2), self.P ** 2, h, w)
        
-        a = self.a_routing(x)
-        a = torch.sigmoid(a)
-        
         p_out, a_out = self.routinglayer(p, a)
         a_out = torch.log(a_out / (1 - a_out + EPS))
        

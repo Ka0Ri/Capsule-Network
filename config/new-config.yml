@@ -13,14 +13,17 @@ architect_settings:
                 is_freeze: false
         head:
                 n_cls: 10
-                n_layers: 1
+                n_layers: 2
                 n_emb: 32
                 is_caps: true
                 caps:
-                        reduce: false
+                        pooling: avg
+                        shuffle: false
+                        cap_style: hw # c: by channel, hw: by height and width
                         cap_dims: 4
                         routing:
-                                type: dynamnic
+                                reduce: None
+                                type: dynamic
                                 iters: 3
                                 temp: 1.5
 dataset_settings:
@@ -28,7 +31,7 @@ dataset_settings:
         path: data/
         img_size: 224
 training_settings: 
-        gpu_ids: [0]
+        gpu_ids: [1]
         n_gpu: 1
         loss: ce
         metric: accuracy
