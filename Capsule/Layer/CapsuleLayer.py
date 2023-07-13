@@ -93,8 +93,8 @@ class CapsuleRouting(nn.Module):
 
         # TODO: max_min_norm is not necessary, but we dont know
         # u = max_min_norm(u, dim=3)
-        
-        v = squash(torch.sum(u, dim=1, keepdim=True), dim=3)
+
+        v = squash(torch.mean(u, dim=1, keepdim=True), dim=3)
         # v = torch.sum(u, dim=1, keepdim=True)
         a_out = safe_norm(v, dim=3)
         # a_out = torch.sigmoid(a_out)
@@ -429,7 +429,7 @@ class AdaptiveCapsuleHead(nn.Module):
             p = p.reshape(b, d // (self.P ** 2), self.P ** 2, h, w)
        
         p_out, a_out = self.routinglayer(p, a)
-        a_out = torch.log(a_out / (1 - a_out + EPS))
+        # a_out = torch.log(a_out / (1 - a_out + EPS))
        
         if get_capsules:
             return p_out, a_out

@@ -90,6 +90,8 @@ def get_loss_function(type):
         loss = nn.BCELoss()
     elif type == "mse": 
         loss = nn.MSELoss()
+    elif type == "margin":
+        loss = MarginLoss()
     elif type == "none": 
         loss = None # only for task == detection
     else: 

@@ -393,9 +393,8 @@ class MarginLoss(nn.Module):
     """
     Loss = T*max(0, m+ - |v|)^2 + lambda*(1-T)*max(0, |v| - max-)^2 + alpha*|x-y|
     """
-    def __init__(self, num_classes, pos=0.9, neg=0.1, lam=0.5):
+    def __init__(self, pos=0.9, neg=0.1, lam=0.5):
         super(MarginLoss, self).__init__()
-        self.num_classes = num_classes
         self.pos = pos
         self.neg = neg
         self.lam = lam
