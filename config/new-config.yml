@@ -4,25 +4,24 @@ logger:
         tags: None
 task: classification
 architect_settings:
-        name: classifier-test
         backbone:
-                name: resnet-s
-                is_backbone: false
+                name: deeplab-m
+                is_backbone: true
                 is_full: false
                 is_pretrained: false
                 is_freeze: false
         head:
                 n_cls: 10
-                n_layers: 1
+                n_layers: 3
                 n_emb: 512
-                is_caps: false
+                is_caps: true
                 caps:
-                        pooling: avg
+                        pooling: None
                         shuffle: false
-                        cap_style: hw # c: by channel, hw: by height and width
+                        cap_style: c # c: by channel, hw: by height and width
+                        reduce: None
                         cap_dims: 4
                         routing:
-                                reduce: None
                                 type: dynamic
                                 iters: 3
                                 temp: 1.5
