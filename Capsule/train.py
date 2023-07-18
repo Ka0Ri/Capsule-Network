@@ -197,11 +197,11 @@ class DataModule(LightningDataModule):
         # assert self.dataset in ["CIFAR10", "LungCT-Scan", "CUB2011", "PennFudan"], "Dataset not supported"
         self.data_class = {
             "CIFAR10": CIFAR10read,
+            "CIFAR100": CIFAR100read,
             "LungCT-Scan": LungCTscan,
-            # "PennFudan": PennFudanDataset,
-            "CUB2011": Cub2011,
-            "CUB2011-feats": Cub2011_feats,
             "CIFAR10-feats": CIFAR10_feats,
+            "Caltech101": Caltech101,
+            "VOC2012": VOC2012read,
         }
         self.class_list = None
         self.collate_fn = None
@@ -328,6 +328,7 @@ class Model(LightningModule):
           
         reconstructions = make_grid(reconstructions, nrow= int(self.train_settings['n_batch'] ** 0.5))
         reconstructions = reconstructions.numpy().transpose(1, 2, 0)
+        reconstructions = normalize_image(reconstructions)
         self.logger.experiment["val/reconstructions"].append(File.as_image(reconstructions))
 
         self.validation_step_outputs.clear()

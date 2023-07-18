@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset, Subset
-from torchvision.datasets import CIFAR10, CIFAR100, Caltech101
+from torchvision.datasets import CIFAR10, CIFAR100, Caltech101, VOCSegmentation
 from torchvision import transforms
 import torch
 from torch import nn
@@ -196,6 +196,113 @@ class Caltech101read(Dataset):
       
         trans_img = self.transform(images)
         return trans_img, labels, self.transformAnn(images)
+    
+class VOC2012read(Dataset):
+    VOC_CLASSES = [
+    "background",
+    "aeroplane",
+    "bicycle",
+    "bird",
+    "boat",
+    "bottle",
+    "bus",
+    "car",
+    "cat",
+    "chair",
+    "cow",
+    "diningtable",
+    "dog",
+    "horse",
+    "motorbike",
+    "person",
+    "potted plant",
+    "sheep",
+    "sofa",
+    "train",
+    "tv/monitor",
+    ]
+
+    VOC_COLORMAP = [
+        [0, 0, 0],
+        [128, 0, 0],
+        [0, 128, 0],
+        [128, 128, 0],
+        [0, 0, 128],
+        [128, 0, 128],
+        [0, 128, 128],
+        [128, 128, 128],
+        [64, 0, 0],
+        [192, 0, 0],
+        [64, 128, 0],
+        [192, 128, 0],
+        [64, 0, 128],
+        [192, 0, 128],
+        [64, 128, 128],
+        [192, 128, 128],
+        [0, 64, 0],
+        [128, 64, 0],
+        [0, 192, 0],
+        [128, 192, 0],
+        [0, 64, 128],
+    ]
+    def __init__(self, mode, data_path, imgsize=224, transform=None):
+
+        # load Caltech101 dataset
+      
+        if(mode == 'train'):
+            self.dataset = VOCSegmentation(root=data_path, download=False, image_set='train')
+        elif(mode == 'val'):
+            self.dataset = VOCSegmentation(root=data_path, download=False, image_set='val')
+        elif(mode == 'test'):
+            self.dataset = VOCSegmentation(root=data_path, download=False, image_set='val')
+
+        self.transform = transform
+        self.transformOIMG = transforms.Compose([transforms.Resize((imgsize, imgsize)),
+                                                    transforms.ToTensor()])
+        if(self.transform is None):
+            self.transformAnn = transforms.Compose([transforms.Resize((imgsize, imgsize)),
+                                                    ])
+            self.transformImg = partial(SemanticSegmentation, resize_size=(imgsize, imgsize))()
+
+    @staticmethod
+    def _convert_to_segmentation_mask(mask):
+        # This function converts a mask from the Pascal VOC format to the format required by AutoAlbument.
+        #
+        # Pascal VOC uses an RGB image to encode the segmentation mask for that image. RGB values of a pixel
+        # encode the pixel's class.
+        #
+        # AutoAlbument requires a segmentation mask to be a NumPy array with the shape [height, width, num_classes].
+        # Each channel in this mask should encode values for a single class. Pixel in a mask channel should have
+        # a value of 1.0 if the pixel of the image belongs to this class and 0.0 otherwise.
+        mask = np.array(mask)
+        height, width = mask.shape[:2]
+        segmentation_mask = np.zeros((height, width, len(VOC2012read.VOC_COLORMAP)), dtype=np.float32)
+        for label_index, label in enumerate(VOC2012read.VOC_COLORMAP):
+            segmentation_mask[:, :, label_index] = np.all(mask == label, axis=-1).astype(float)
+       
+        segmentation_mask = np.argmax(segmentation_mask, axis=-1).astype(np.uint8)
+        # print(np.sum(segmentation_mask))
+        segmentation_mask = Image.fromarray(segmentation_mask)
+        return segmentation_mask
+    
+    def __len__(self):
+        return (len(self.dataset))
+    
+    def __getitem__(self, idx):
+        image = self.dataset[idx][0]
+        mask = self.dataset[idx][1].convert("RGB")
+        mask = self._convert_to_segmentation_mask(mask)
+      
+        if self.transform is None:
+            tran_image = self.transformImg(image)
+            mask = self.transformAnn(mask)
+            mask = torch.tensor(np.array(mask))
+        else:
+            tran_image = self.transform(image=image, mask=mask)
+            image = tran_image["image"]
+            mask = tran_image["mask"]
+
+        return tran_image, mask, self.transformOIMG(image)
 
 
 
