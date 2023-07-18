@@ -190,7 +190,7 @@ class AdaptiveCapsuleHead(nn.Module):
         self.activation.add_module('sigmoid', nn.Sigmoid())
 
         # Routing Layer
-        self.routinglayer = CapsuleRouting(self.B, head['n_cls'], head['caps']['cap_dims'], head['caps']['routing'])
+        self.routinglayer = CapsuleRouting(self.B, head['n_cls'], self.P, self.cap_style, head['caps']['routing'])
           
 
     def forward(self, x, get_capsules=False):

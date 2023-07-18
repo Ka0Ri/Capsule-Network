@@ -62,26 +62,31 @@ class CapsuleRouting(nn.Module):
         'B = K*K*B'
         'psize = P*P'
     '''
-    def __init__(self, B, C, P, routing):
+    def __init__(self, B, C, P, cap_style, routing):
 
         super(CapsuleRouting, self).__init__()
 
         self.iters = routing['iters']
         self.mode = routing['type']
         self.temp = routing['temp']  # for fuzzy routing
+        self.cap_style = cap_style
         self.P = P
         self.B = B
         self.C = C
         # self._lambda = lam # for fuzzy and EM routing
-    
+
         fan_in = self.B * self.P * self.P # in_caps types * receptive field size
         std = np.sqrt(2.) / np.sqrt(fan_in)
         bound = np.sqrt(3.) * std
-        # Out ← [1, B * K * K, C, P, P] noisy_identity initialization
-        self.W_ij = nn.Parameter(torch.clamp(1.*torch.eye(self.P,self.P).repeat( \
-            self.B, self.C, 1, 1).permute(0, 2, 3, 1) \
-            + torch.empty(self.B, self.P, self.P, self.C).uniform_(-bound, bound)
-            , max=1))
+        if(self.cap_style == 'hw'):
+            # Out ← [1, B * K * K, C, P, P] noisy_identity initialization
+            self.W_ij = nn.Parameter(torch.clamp(1.*torch.eye(self.P,self.P).repeat( \
+                self.B, self.C, 1, 1).permute(0, 2, 3, 1) \
+                + torch.empty(self.B, self.P, self.P, self.C).uniform_(-bound, bound)
+                , max=1))
+        else:
+            self.W_ij = nn.Conv3d(1, self.C * self.P * self.P, 
+                kernel_size=(self.P * self.P, 1, 1), stride=(self.P * self.P, 1, 1), bias=False)
 
     def zero_routing(self, u):
 
@@ -202,11 +207,16 @@ class CapsuleRouting(nn.Module):
     def forward(self, p, a):
 
         b, B, P, h, w = p.shape
-        p = p.reshape(-1, self.B, self.P, self.P, h, w)
-        # Multiplying with Transformations weights matrix
-        u = torch.einsum('bBijHW, BjkC -> bBCikHW', p, self.W_ij)
-        u = u.reshape(-1, self.B, self.C, self.P * self.P, h, w)
-
+        if self.cap_style == 'hw':
+            p = p.reshape(-1, self.B, self.P, self.P, h, w)
+            # Multiplying with Transformations weights matrix
+            u = torch.einsum('bBijHW, BjkC -> bBCikHW', p, self.W_ij)
+            u = u.reshape(-1, self.B, self.C, self.P * self.P, h, w)
+        else:
+            # B times of 3D convolutions of shape (C * P, 1, 1) to get B x C votes
+            pre_votes = [self.W_ij(x_sub) for x_sub in torch.split(p, 1, dim=1)]
+            u = torch.concat([vote.reshape(-1, 1, self.C, P, h, w)
+                              for vote in pre_votes], dim=1)
 
         if self.mode == "dynamic":
             v, a = self.dynamic(u)

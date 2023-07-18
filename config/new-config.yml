@@ -2,21 +2,21 @@ logger:
         project: kaori/Capsule-Network # replace with your own
         api_key: YOUR API KEY # replace with your own
         tags: None
-task: segmentation
+task: classification # segmentation, classification
 architect_settings:
         backbone:
-                name: fcn-m
-                is_backbone: true
+                name: resnet-s
+                is_backbone: false
                 is_full: false
                 is_pretrained: false
                 is_freeze: false
         head:
-                n_cls: 21
+                n_cls: 10
                 n_layers: 1
-                n_emb: 32
+                n_emb: 512
                 is_caps: true
                 caps:
-                        pooling: None
+                        pooling: avg
                         shuffle: false
                         cap_style: c # c: by channel, hw: by height and width
                         reduce: None
@@ -26,17 +26,17 @@ architect_settings:
                                 iters: 3
                                 temp: 1.5
 dataset_settings:
-        name: VOC2012 # VOC2012, LungCT-Scan, CIFAR10, CIFAR100, Caltech101, CIFAR10-feats
-        path: data/
+        name: CIFAR10-feats # VOC2012, LungCT-Scan, CIFAR10, CIFAR100, Caltech101, CIFAR10-feats
+        path: data/CIFAR10-features
         img_size: 224
 training_settings: 
         gpu_ids: [0]
         n_gpu: 1
         loss: ce
-        metric: dice
+        metric: accuracy # dice, accuracy
         ckpt_path: "./mode/test"
         n_epoch: 100
-        n_batch: 8
+        n_batch: 64
         num_workers: 0
         optimizer: adam
         lr_scheduler: step
