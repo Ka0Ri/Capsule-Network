@@ -2,19 +2,19 @@ logger:
         project: kaori/Capsule-Network # replace with your own
         api_key: YOUR API KEY # replace with your own
         tags: None
-task: classification
+task: segmentation
 architect_settings:
         backbone:
-                name: deeplab-m
+                name: fcn-m
                 is_backbone: true
                 is_full: false
                 is_pretrained: false
                 is_freeze: false
         head:
-                n_cls: 10
-                n_layers: 3
-                n_emb: 512
-                is_caps: true
+                n_cls: 2
+                n_layers: 1
+                n_emb: 32
+                is_caps: false
                 caps:
                         pooling: None
                         shuffle: false
@@ -26,17 +26,17 @@ architect_settings:
                                 iters: 3
                                 temp: 1.5
 dataset_settings:
-        name: CIFAR10-feats
-        path: data/
+        name: LungCT-Scan
+        path: data/CT-scan-dataset
         img_size: 224
 training_settings: 
-        gpu_ids: [0]
+        gpu_ids: [1]
         n_gpu: 1
         loss: ce
-        metric: accuracy
+        metric: dice
         ckpt_path: "./mode/test"
         n_epoch: 100
-        n_batch: 64
+        n_batch: 32
         num_workers: 0
         optimizer: adam
         lr_scheduler: step

@@ -5,7 +5,7 @@ Authors: dtvu1707@gmail.com
 """
 import torch
 import torch.nn as nn
-from Capsule.Routing import CapsuleRouting, squash, EPS
+from Routing import CapsuleRouting, squash, EPS
 
 #--------------------Capsule Layer------------------------------------------------
     
@@ -216,7 +216,7 @@ class AdaptiveCapsuleHead(nn.Module):
        
         p_out, a_out = self.routinglayer(p, a)
         a_out = torch.log(a_out / (1 - a_out + EPS))
-        print(a_out.shape)
+       
         if get_capsules:
             return p_out, a_out
         else: 

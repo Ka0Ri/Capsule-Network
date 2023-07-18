@@ -7,9 +7,7 @@ import torch.nn.functional as F
 
 
 from ultis import *
-from Layer.Classifier import CapsuleWrappingClassifier
-from Layer.Detector import CapsuleWrappingDetector
-from Layer.Segment import CapsuleWrappingSegment
+from model import CapsuleWrappingClassifier, CapsuleWrappingSegment
 
 from pytorch_lightning import LightningModule, Trainer, LightningDataModule
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, EarlyStopping
@@ -92,8 +90,6 @@ def get_loss_function(type):
         loss = nn.MSELoss()
     elif type == "margin":
         loss = MarginLoss()
-    elif type == "none": 
-        loss = None # only for task == detection
     else: 
         raise NotImplementedError()
 
@@ -202,7 +198,7 @@ class DataModule(LightningDataModule):
         self.data_class = {
             "CIFAR10": CIFAR10read,
             "LungCT-Scan": LungCTscan,
-            "PennFudan": PennFudanDataset,
+            # "PennFudan": PennFudanDataset,
             "CUB2011": Cub2011,
             "CUB2011-feats": Cub2011_feats,
             "CIFAR10-feats": CIFAR10_feats,
@@ -258,10 +254,6 @@ class Model(LightningModule):
             self.model = CapsuleWrappingSegment(model_configs=self.architect_settings)
             self.train_metrics = torchmetrics.Dice(num_classes= self.num_classes)
             self.valid_metrics = torchmetrics.Dice(num_classes= self.num_classes)
-        elif(self.task == 'detection'):
-            self.model = CapsuleWrappingDetector(model_configs=self.architect_settings)
-            self.train_metrics = MeanAveragePrecision()
-            self.valid_metrics = MeanAveragePrecision()
         else:
             raise NotImplementedError()
         self.metrics_name = self.train_settings['metric']
@@ -283,15 +275,12 @@ class Model(LightningModule):
     
     def training_step(self, batch, batch_idx):
         x, y, _ = batch
-        if(self.task == 'detection'):
-            loss_dict = self(x, y)
-            loss = sum(loss for loss in loss_dict.values())
-        else:
-            y = y.long()
-            y_hat = self(x)
-            loss = self.loss(y_hat, y)
-            y_pred = torch.softmax(y_hat, dim=1)
-            self.train_metrics.update(y_pred.cpu(), y.cpu())
+       
+        y = y.long()
+        y_hat = self(x)
+        loss = self.loss(y_hat, y)
+        y_pred = torch.softmax(y_hat, dim=1)
+        self.train_metrics.update(y_pred.cpu(), y.cpu())
 
         self.log("metrics/batch/train_loss", loss, prog_bar=False)
 
@@ -300,26 +289,19 @@ class Model(LightningModule):
     def on_train_epoch_end(self):
 
         metrics = self.train_metrics.compute()
-        if(self.task == 'detection'):
-            metrics = metrics['map']
         self.log(f"metrics/epoch/train_{self.metrics_name}", metrics)
         self.train_metrics.reset()
 
     def _shared_eval_step(self, batch, batch_idx):
         x, y, images = batch
         y_hat = self(x)
-        if(self.task == 'detection'):
-            y_pred = [{k: v.cpu() for k, v in t.items()} for t in y_hat]
-            targets = [{k: v.cpu() for k, v in t.items()} for t in y]
-            images = [(t * 255).to(torch.uint8).cpu() for t in images]
-            return images, y_pred, targets, -1
-        else:
-            y = y.long()
-            loss = self.loss(y_hat, y)
-            y_pred = torch.softmax(y_hat, dim=1)
-            images = (images * 255).to(torch.uint8)
+    
+        y = y.long()
+        loss = self.loss(y_hat, y)
+        y_pred = torch.softmax(y_hat, dim=1)
+        images = (images * 255).to(torch.uint8)
             
-            return images.cpu(), y_pred.cpu(), y.cpu(), loss.item()
+        return images.cpu(), y_pred.cpu(), y.cpu(), loss.item()
 
     def validation_step(self, batch, batch_idx):
     
@@ -331,34 +313,21 @@ class Model(LightningModule):
     def on_validation_epoch_end(self):
         loss =[outputs['loss'] for outputs in self.validation_step_outputs]
         self.log('metrics/epoch/val_loss', sum(loss) / len(loss))
-        
+        self.log(f"metrics/epoch/val_{self.metrics_name}", self.valid_metrics.compute())
+
         outputs = self.validation_step_outputs[0]
         images, predictions, targets = outputs["image"], outputs["predictions"], outputs["targets"]
         if(self.task == 'classification'):
-            self.log(f"metrics/epoch/val_{self.metrics_name}", self.valid_metrics.compute())
             reconstructions = images
         elif(self.task == 'segmentation'):
-            self.log(f"metrics/epoch/val_{self.metrics_name}", self.valid_metrics.compute())
             classes_masks = predictions.argmax(1) == torch.arange(predictions.shape[1])[:, None, None, None]
             reconstructions = [draw_segmentation_masks(image, masks=mask, alpha=.8)
                                for image, mask in zip(images, classes_masks.swapaxes(0, 1))]
             reconstructions = torch.stack([F.interpolate(img.unsqueeze(0), size=(128, 128))
                                             for img in reconstructions]).squeeze(1)
-        elif(self.task == 'detection'):
-            self.log(f"metrics/epoch/val_{self.metrics_name}", self.valid_metrics.compute()['map'])
-            if("maskrcnn" in self.architect_settings['backbone']['name']):
-                boolean_masks = [out['masks'][out['scores']  > .75] > 0.5 for out in predictions]
-                reconstructions = [draw_segmentation_masks(image, mask.squeeze(1), alpha=0.9) 
-                                   for image, mask in zip(images, boolean_masks)]
-            else:
-                boxes = [out['boxes'][out['scores'] > .8] for out in predictions]
-                reconstructions = [draw_bounding_boxes(image, box, width=4, colors='red')
-                                      for image, box in zip(images, boxes)]
-            reconstructions = torch.stack([F.interpolate(img.unsqueeze(0), size=(128, 128))
-                                            for img in reconstructions]).squeeze(1)
           
         reconstructions = make_grid(reconstructions, nrow= int(self.train_settings['n_batch'] ** 0.5))
-        reconstructions = reconstructions.numpy().transpose(1, 2, 0) / 255
+        reconstructions = reconstructions.numpy().transpose(1, 2, 0)
         self.logger.experiment["val/reconstructions"].append(File.as_image(reconstructions))
 
         self.validation_step_outputs.clear()
@@ -373,13 +342,10 @@ class Model(LightningModule):
     
     def on_test_epoch_end(self):
         loss =[outputs['loss'] for outputs in self.test_step_outputs]
+
         self.log('metrics/epoch/test_loss', sum(loss) / len(loss))
-        
-        if(self.task == 'classification' or self.task == 'segmentation'):
-            self.log(f"metrics/epoch/test_{self.metrics_name}", self.valid_metrics.compute())    
-        elif(self.task == 'detection'):
-            self.log(f"metrics/epoch/test_{self.metrics_name}", self.valid_metrics.compute()['map'])
-         
+        self.log(f"metrics/epoch/test_{self.metrics_name}", self.valid_metrics.compute())    
+     
         self.test_step_outputs.clear()
         self.valid_metrics.reset()
         

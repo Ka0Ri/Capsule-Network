@@ -1,17 +1,25 @@
-from torch.utils.data import Dataset
-from torchvision.datasets import CIFAR10
+from torch.utils.data import Dataset, Subset
+from torchvision.datasets import CIFAR10, CIFAR100, Caltech101
 from torchvision import transforms
-from torchvision.datasets.utils import download_url
 import torch
 from torch import nn
-from torchvision.transforms._presets import SemanticSegmentation, ObjectDetection
+from torchvision.transforms._presets import SemanticSegmentation
 from functools import partial
-import pandas as pd
 import numpy as np
 import os, glob
 import PIL.Image as Image
 import h5py
+import random
 
+
+'''SEED Everything'''
+def seed_everything(SEED=42):
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    torch.backends.cudnn.benchmark = True # keep True if all the input have same size.
 
 def normalize_image(image):
     xmin = np.min(image)
@@ -76,85 +84,7 @@ class LungCTscan(Dataset):
 
         return tran_image, mask.squeeze(0), self.transformAnn(image)
 
-class PennFudanDataset(torch.utils.data.Dataset):
-    def __init__(self, mode, data_path, imgsize=224, transform=None):
-        self.root = data_path
-        self.transform = transform
-        # load all image files, sorting them to
-        # ensure that they are aligned
-        imgs = list(sorted(os.listdir(os.path.join(data_path, "PNGImages"))))
-        masks = list(sorted(os.listdir(os.path.join(data_path, "PedMasks"))))
 
-        n = len(imgs)
-        if(mode == 'train'):
-            self.imgs = imgs[:int(n*0.8)]
-            self.masks = masks[:int(n*0.8)]
-        elif(mode == 'val'):
-            self.imgs = imgs[int(n*0.8):]
-            self.masks = masks[int(n*0.8):]
-        elif(mode == 'test'):
-            self.imgs = imgs[int(n*0.8):]
-            self.masks = masks[int(n*0.8):]
-
-        if(self.transform is None):
-            self.transform = partial(ObjectDetection)()
-    
-    def __len__(self):
-        return len(self.imgs)
-
-    def __getitem__(self, idx):
-        # load images and masks
-        img_path = os.path.join(self.root, "PNGImages", self.imgs[idx])
-        mask_path = os.path.join(self.root, "PedMasks", self.masks[idx])
-        img = Image.open(img_path).convert("RGB")
-        # note that we haven't converted the mask to RGB,
-        # because each color corresponds to a different instance
-        # with 0 being background
-        mask = Image.open(mask_path)
-        # convert the PIL Image into a numpy array
-        mask = np.array(mask)
-        # instances are encoded as different colors
-        obj_ids = np.unique(mask)
-        # first id is the background, so remove it
-        obj_ids = obj_ids[1:]
-
-        # split the color-encoded mask into a set
-        # of binary masks
-        masks = mask == obj_ids[:, None, None]
-
-        # get bounding box coordinates for each mask
-        num_objs = len(obj_ids)
-        boxes = []
-        for i in range(num_objs):
-            pos = np.nonzero(masks[i])
-            xmin = np.min(pos[1])
-            xmax = np.max(pos[1])
-            ymin = np.min(pos[0])
-            ymax = np.max(pos[0])
-            boxes.append([xmin, ymin, xmax, ymax])
-
-        # convert everything into a torch.Tensor
-        boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        # there is only one class
-        labels = torch.ones((num_objs,), dtype=torch.int64)
-        masks = torch.as_tensor(masks, dtype=torch.uint8)
-
-        image_id = torch.tensor([idx])
-        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
-        # suppose all instances are not crowd
-        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
-
-        target = {}
-        target["boxes"] = boxes
-        target["labels"] = labels
-        target["masks"] = masks
-        target["image_id"] = image_id
-        target["area"] = area
-        target["iscrowd"] = iscrowd
-
-        trans_img = self.transform(img)
-
-        return trans_img, target, transforms.ToTensor()(img)
         
 class CIFAR10read(Dataset):
     """Customized dataset loader"""
@@ -196,123 +126,6 @@ class CIFAR10read(Dataset):
       
         trans_img = self.transform(images)
         return trans_img, labels, transforms.ToTensor()(images)
-
-
-class Cub2011(Dataset):
-    base_folder = 'CUB_200_2011/images'
-    url = 'https://data.caltech.edu/records/65de6-vp158'
-    filename = 'CUB_200_2011.tgz'
-    tgz_md5 = '97eceeb196236b17998738112f37df78'
-
-    def __init__(self, mode, data_path, imgsize=224, transform=None):
-        self.root = os.path.expanduser(data_path)
-        self.train = mode == 'train'
-       
-        # self._download()
-
-        if not self._check_integrity():
-            raise RuntimeError('Dataset not found or corrupted.' +
-                               ' You can use download=True to download it')
-
-        self.transform = transform
-        self.o_transform = transforms.Compose([transforms.Resize((imgsize, imgsize)),
-                                                transforms.ToTensor()])
-        if(self.transform == None):
-            self.transform = transforms.Compose([
-                transforms.Resize((imgsize, imgsize)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225]),
-            ])
-
-    def _load_metadata(self):
-        images = pd.read_csv(os.path.join(self.root, 'CUB_200_2011', 'images.txt'), sep=' ',
-                             names=['img_id', 'filepath'])
-        image_class_labels = pd.read_csv(os.path.join(self.root, 'CUB_200_2011', 'image_class_labels.txt'),
-                                         sep=' ', names=['img_id', 'target'])
-        train_test_split = pd.read_csv(os.path.join(self.root, 'CUB_200_2011', 'train_test_split.txt'),
-                                       sep=' ', names=['img_id', 'is_training_img'])
-
-        data = images.merge(image_class_labels, on='img_id')
-        self.data = data.merge(train_test_split, on='img_id')
-
-        if self.train:
-            self.data = self.data[self.data.is_training_img == 1]
-        else:
-            self.data = self.data[self.data.is_training_img == 0]
-
-    def _check_integrity(self):
-        try:
-            self._load_metadata()
-        except Exception:
-            return False
-
-        for index, row in self.data.iterrows():
-            filepath = os.path.join(self.root, self.base_folder, row.filepath)
-            if not os.path.isfile(filepath):
-                print(filepath)
-                return False
-        return True
-
-    def _download(self):
-        import tarfile
-
-        if self._check_integrity():
-            print('Files already downloaded and verified')
-            return
-
-        download_url(self.url, self.root, self.filename, self.tgz_md5)
-
-        with tarfile.open(os.path.join(self.root, self.filename), "r:gz") as tar:
-            tar.extractall(path=self.root)
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        sample = self.data.iloc[idx]
-        path = os.path.join(self.root, self.base_folder, sample.filepath)
-        target = sample.target - 1  # Targets start at 1 by default, so shift to 0
-        img = Image.open(path).convert('RGB')
-        trans_img = self.transform(img)
-
-        return trans_img, target, self.o_transform(img)
-    
-class Cub2011_feats(Dataset):
-    def __init__(self, mode, data_path, imgsize=224, transform=None):
-
-    
-        if(mode == 'train'):
-            hf = h5py.File(data_path + '/CUB_ResNet_train_data.h5', 'r')
-            self.input_images = np.array(hf['data'])
-            self.input_labels = np.array(hf['label'])
-            hf.close()
-        elif(mode == 'val'):
-            hf = h5py.File(data_path + '/CUB_ResNet_test_data.h5', 'r')
-            self.input_images = np.array(hf['data'])
-            self.input_labels = np.array(hf['label'])
-        elif(mode == 'test'):
-            hf = h5py.File(data_path + '/CUB_ResNet_test_data.h5', 'r')
-            self.input_images = np.array(hf['data'])
-            self.input_labels = np.array(hf['label'])
-    
-        self.transform = transform
-        if(self.transform == None):
-            self.transform = transforms.Compose([
-                transforms.ToTensor(),
-            ])
-
-    def __len__(self):
-        return (self.input_images.shape[0])
-
-    def __getitem__(self, idx):
-        images = self.input_images[idx]
-        labels = self.input_labels[idx]
-        
-        trans_img = torch.tensor(images)
-        oimg = torch.sum(trans_img, dim=0, keepdim=True)
-
-        return trans_img, labels, oimg
     
 class CIFAR10_feats(Dataset):
     def __init__(self, mode, data_path, imgsize=224, transform=None):
@@ -348,6 +161,85 @@ class CIFAR10_feats(Dataset):
         oimg = torch.sum(trans_img, dim=0, keepdim=True)
 
         return trans_img, labels, oimg
+
+class Caltech101read(Dataset):
+
+    def __init__(self, mode, data_path, imgsize=224, transform=None):
+
+        # load Caltech101 dataset
+        full_dataset = Caltech101(root=data_path, download=True)
+        train_size = int(0.8 * len(full_dataset))
+        if(mode == 'train'):
+            self.dataset = Subset(full_dataset, range(0, train_size))
+        elif(mode == 'val'):
+            self.dataset = Subset(full_dataset, range(train_size, len(full_dataset)))
+        elif(mode == 'test'):
+            self.dataset = Subset(full_dataset, range(train_size, len(full_dataset)))
+
+        self.transform = transform
+        self.transformAnn = transforms.Compose([transforms.Resize((imgsize, imgsize)),
+                                                    transforms.ToTensor()])
+        if(self.transform == None):
+            self.transform = transforms.Compose([
+                transforms.Resize((imgsize, imgsize)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
+            ])
+
+    def __len__(self):
+        return (len(self.dataset))
+    
+    def __getitem__(self, idx):
+        images = self.dataset[idx][0]
+        labels = self.dataset[idx][1]
+      
+        trans_img = self.transform(images)
+        return trans_img, labels, self.transformAnn(images)
+
+
+
+class CIFAR100read(Dataset):
+    """Customized dataset loader"""
+    def __init__(self, mode, data_path, imgsize=224, transform=None):
+
+        # load CIFAR100 datase
+        if(mode == 'test'):
+            dataset = CIFAR100(root=data_path, download=True, train=False)
+        else:
+            dataset = CIFAR100(root=data_path, download=True, train=True)
+        data = getattr(dataset, 'data')
+        labels = getattr(dataset, 'targets')
+        n = len(data)
+        if(mode == 'train'):
+            self.input_images = np.array(data[:int(n * 0.8)])
+            self.input_labels = np.array(labels[:int(n * 0.8)])
+        elif(mode == 'val'):
+            self.input_images = np.array(data[int(n * 0.8):])
+            self.input_labels = np.array(labels[int(n * 0.8):])
+        elif(mode == 'test'):
+            self.input_images = np.array(data)
+            self.input_labels = np.array(labels)
+    
+        self.transform = transform
+        if(self.transform == None):
+            self.transform = transforms.Compose([
+                transforms.ToPILImage(),
+                transforms.Resize(imgsize),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
+            ])
+
+    def __len__(self):
+        return (self.input_images.shape[0])
+
+    def __getitem__(self, idx):
+        images = self.input_images[idx]
+        labels = self.input_labels[idx]
+      
+        trans_img = self.transform(images)
+        return trans_img, labels, transforms.ToTensor()(images)
 
 #---------------------------------------lOSS FUNCTION-----------------------------------------------
 

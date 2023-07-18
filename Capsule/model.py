@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .CapsuleLayer import AdaptiveCapsuleHead
+from CapsuleLayer import AdaptiveCapsuleHead
 
 # MODEL For Classification
 from torchvision.models import resnet18, resnet50, resnet152, \
@@ -57,15 +57,16 @@ class Simple_Classifier(nn.Module):
         n_emb: number of embedding
         n_layers: number of layers
     '''
-    def __init__(self, num_ftrs, n_cls, n_emb=512, n_layers=1) -> None:
+    def __init__(self, num_ftrs, n_cls, n_emb=512, n_layers=1, pool='avg') -> None:
         super(Simple_Classifier, self).__init__()
+        self.classifier = nn.Sequential()
+        if(pool == 'avg'):
+            self.classifier.add_module('avgpool', nn.AdaptiveAvgPool2d((1, 1)))
         if(n_layers == 1):
-            self.classifier =  nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
-                                            nn.Conv2d(num_ftrs, n_cls, 1))
+            self.classifier.append(nn.Conv2d(num_ftrs, n_cls, 1))
         else:
-            self.classifier =  nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
-                                            nn.Conv2d(num_ftrs, n_emb, 1),
-                                            nn.ReLU())
+            self.classifier.append(nn.Conv2d(num_ftrs, n_emb, 1))
+            self.classifier.append(nn.ReLU())
             for i in range(1, n_layers):
                 if(i == n_layers - 1):
                     self.classifier.append(nn.Conv2d(n_emb, n_cls, 1))
@@ -190,7 +191,7 @@ class CapsuleWrappingSegment(nn.Module):
         self.n_cls = model_configs['head']['n_cls']
         self.n_layers = model_configs['head']['n_layers']
         self.n_emb = model_configs['head']['n_emb']
-
+    
         # Load backbone
         self.backbone = self._model_selection()
         if not self.is_full:
@@ -199,7 +200,7 @@ class CapsuleWrappingSegment(nn.Module):
                                                                 head=model_configs['head'])
             else:
                 self.backbone.classifier = Simple_Classifier(self.num_ftrs, self.n_cls,
-                                                            self.n_emb, self.n_layers)
+                                                            self.n_emb, self.n_layers, None)
         
     def _model_selection(self):
 
