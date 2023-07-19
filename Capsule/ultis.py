@@ -161,6 +161,41 @@ class CIFAR10_feats(Dataset):
         oimg = torch.sum(trans_img, dim=0, keepdim=True)
 
         return trans_img, labels, oimg
+    
+class CIFAR100_feats(Dataset):
+    def __init__(self, mode, data_path, imgsize=224, transform=None):
+
+        if(mode == 'train'):
+            hf = h5py.File(data_path + '/cifar100_train.h5', 'r')
+            self.input_images = np.array(hf['data'])
+            self.input_labels = np.array(hf['label'])
+            hf.close()
+        elif(mode == 'val'):
+            hf = h5py.File(data_path + '/cifar100_val.h5', 'r')
+            self.input_images = np.array(hf['data'])
+            self.input_labels = np.array(hf['label'])
+        elif(mode == 'test'):
+            hf = h5py.File(data_path + '/cifar100_val.h5', 'r')
+            self.input_images = np.array(hf['data'])
+            self.input_labels = np.array(hf['label'])
+    
+        self.transform = transform
+        if(self.transform == None):
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+            ])
+
+    def __len__(self):
+        return (self.input_images.shape[0])
+
+    def __getitem__(self, idx):
+        images = self.input_images[idx]
+        labels = self.input_labels[idx]
+        
+        trans_img = torch.tensor(images)
+        oimg = torch.sum(trans_img, dim=0, keepdim=True)
+
+        return trans_img, labels, oimg
 
 class Caltech101read(Dataset):
 

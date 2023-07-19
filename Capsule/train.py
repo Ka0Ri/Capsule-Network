@@ -194,14 +194,12 @@ class DataModule(LightningDataModule):
             "CIFAR100": CIFAR100read,
             "LungCT-Scan": LungCTscan,
             "CIFAR10-feats": CIFAR10_feats,
+            "CIFAR100-feats": CIFAR100_feats,
             "Caltech101": Caltech101,
             "VOC2012": VOC2012read,
         }
         self.class_list = None
         self.collate_fn = None
-        if(self.dataset == 'PennFudan'):
-            self.collate_fn = collate_fn
-
         self.train_transform, self.val_transform = transform
         
     def setup(self, stage: str):

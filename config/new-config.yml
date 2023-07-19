@@ -11,10 +11,10 @@ architect_settings:
                 is_pretrained: false
                 is_freeze: false
         head:
-                n_cls: 10
+                n_cls: 100
                 n_layers: 3
                 n_emb: 512
-                is_caps: true
+                is_caps: false
                 caps:
                         pooling: avg
                         shuffle: false
@@ -22,15 +22,15 @@ architect_settings:
                         reduce: None
                         cap_dims: 4
                         routing:
-                                type: None
+                                type: daynamic
                                 iters: 3
                                 temp: 1.5
 dataset_settings:
-        name: CIFAR10-feats # VOC2012, LungCT-Scan, CIFAR10, CIFAR100, Caltech101, CIFAR10-feats
-        path: data/CIFAR10-features
+        name: CIFAR100-feats # VOC2012, LungCT-Scan, CIFAR10, CIFAR100, Caltech101, CIFAR10-feats
+        path: data/CIFAR100-features
         img_size: 224
 training_settings: 
-        gpu_ids: [1]
+        gpu_ids: [0]
         n_gpu: 1
         loss: ce
         metric: accuracy # dice, accuracy
