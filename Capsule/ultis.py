@@ -131,16 +131,16 @@ class CIFAR10_feats(Dataset):
     def __init__(self, mode, data_path, imgsize=224, transform=None):
 
         if(mode == 'train'):
-            hf = h5py.File(data_path + '/CIFAR10_train_data.h5', 'r')
+            hf = h5py.File(data_path + '/cifar10_train.h5', 'r')
             self.input_images = np.array(hf['data'])
             self.input_labels = np.array(hf['label'])
             hf.close()
         elif(mode == 'val'):
-            hf = h5py.File(data_path + '/CIFAR10_test_data.h5', 'r')
+            hf = h5py.File(data_path + '/cifar10_val.h5', 'r')
             self.input_images = np.array(hf['data'])
             self.input_labels = np.array(hf['label'])
         elif(mode == 'test'):
-            hf = h5py.File(data_path + '/CIFAR10_test_data.h5', 'r')
+            hf = h5py.File(data_path + '/cifar10_val.h5', 'r')
             self.input_images = np.array(hf['data'])
             self.input_labels = np.array(hf['label'])
     

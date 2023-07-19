@@ -85,8 +85,9 @@ class CapsuleRouting(nn.Module):
                 + torch.empty(self.B, self.P, self.P, self.C).uniform_(-bound, bound)
                 , max=1))
         else:
-            self.W_ij = nn.Conv3d(1, self.C * self.P * self.P, 
+            self.W_ij_list = nn.ModuleList([nn.Conv3d(1, self.C * self.P * self.P, 
                 kernel_size=(self.P * self.P, 1, 1), stride=(self.P * self.P, 1, 1), bias=False)
+                            for i in range(self.B)])
 
     def zero_routing(self, u):
 
@@ -214,7 +215,7 @@ class CapsuleRouting(nn.Module):
             u = u.reshape(-1, self.B, self.C, self.P * self.P, h, w)
         else:
             # B times of 3D convolutions of shape (C * P, 1, 1) to get B x C votes
-            pre_votes = [self.W_ij(x_sub) for x_sub in torch.split(p, 1, dim=1)]
+            pre_votes = [transform(x_sub) for transform, x_sub in zip(self.W_ij_list, torch.split(p, 1, dim=1))]
             u = torch.concat([vote.reshape(-1, 1, self.C, P, h, w)
                               for vote in pre_votes], dim=1)
 
