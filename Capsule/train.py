@@ -16,13 +16,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 import torchmetrics
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
-
-seed = 666
-random.seed(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
+seed_everything(SEED=42)
 torch.set_float32_matmul_precision('medium')
 
 def get_lr_scheduler_config(optimizer, settings):
