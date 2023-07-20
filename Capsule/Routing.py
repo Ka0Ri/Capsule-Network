@@ -105,8 +105,8 @@ class CapsuleRouting(nn.Module):
         b, B, C, P, h, w = u.shape
         c = torch.ones((b, B, C, 1, h, w), device=u.device)
         r = torch.zeros((b, B, C, 1, h, w), device=u.device)
+
         for i in range(self.iters):
-    
             ## c <- (b, B, C, 1, f, f)
             v = squash(torch.sum(c * u, dim=1, keepdim=True), dim=3) #non-linear activation of weighted sum v = sum(c*u)
             ## v <- (b, 1, C, P * P, f, f)
@@ -194,7 +194,7 @@ class CapsuleRouting(nn.Module):
                 r = (1. / (r_n * r_d)) ** m 
                 
             #update pose
-            r_sum = torch.sum(a * r, dim=1, keepdim=True)
+            r_sum = torch.sum(a * r, dim=1, keepdim=True) # TODO, dim=1?
             # coeff <- (b, B, C, 1, f, f)
             coeff = r / (r_sum + EPS)
             # v <- (b, 1, C, P, f, f)

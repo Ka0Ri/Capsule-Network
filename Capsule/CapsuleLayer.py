@@ -55,7 +55,7 @@ class ProjectionHead(nn.Module):
         TODO: add more oftion or just simply use?
     '''
 
-    def __init__(self, in_channels, out_channels, shuffle=False, n_layers=2, pooling=None):
+    def __init__(self, in_channels, out_channels, n_layers=2, pooling=None):
         super(ProjectionHead, self).__init__()
 
         in_channels = in_channels
@@ -72,9 +72,6 @@ class ProjectionHead(nn.Module):
             k_size = 1
             p_size = 0
 
-        if(shuffle):
-            self.projection.add_module('shuffle', ShuffleBlock(out_channels))
-        
         if(n_layers == 1):
             self.projection.add_module('identity', nn.Identity())
         else:
@@ -162,7 +159,6 @@ class AdaptiveCapsuleHead(nn.Module):
         n_layers = head['n_layers']
         n_emb = head['n_emb']
         pooling = head['caps']['pooling']
-        shuffle = head['caps']['shuffle']
         self.P = head['caps']['cap_dims']
         self.cap_style = head['caps']['cap_style']
        
@@ -172,7 +168,7 @@ class AdaptiveCapsuleHead(nn.Module):
         # Primary Capsule
         self.primary_capsule = nn.Sequential()
         self.primary_capsule.add_module('projection', 
-                                        ProjectionHead(B, n_emb, shuffle, n_layers, pooling))
+                                        ProjectionHead(B, n_emb, n_layers, pooling))
         
         if(self.cap_style == 'hw'):
             self.B = B  * (n_layers == 1) + n_emb * (n_layers > 1)
@@ -184,7 +180,7 @@ class AdaptiveCapsuleHead(nn.Module):
 
         # Actiation for Primary Capsule
         self.activation = nn.Sequential()
-        self.activation.add_module('projection', ProjectionHead(B, self.B, shuffle, 2, pooling))
+        self.activation.add_module('projection', ProjectionHead(B, self.B, 2, pooling))
         if pooling == 'avg':
             self.activation.add_module('pooling', nn.AdaptiveAvgPool2d((1, 1)))
         self.activation.add_module('sigmoid', nn.Sigmoid())

@@ -12,17 +12,16 @@ architect_settings:
                 is_freeze: false
         head:
                 n_cls: 100
-                n_layers: 3
+                n_layers: 1
                 n_emb: 512
-                is_caps: false
+                is_caps: true
                 caps:
                         pooling: avg
-                        shuffle: false
                         cap_style: c # c: by channel, hw: by height and width
                         reduce: None
                         cap_dims: 4
                         routing:
-                                type: daynamic
+                                type: em
                                 iters: 3
                                 temp: 1.5
 dataset_settings:
@@ -30,7 +29,7 @@ dataset_settings:
         path: data/CIFAR100-features
         img_size: 224
 training_settings: 
-        gpu_ids: [0]
+        gpu_ids: [1]
         n_gpu: 1
         loss: ce
         metric: accuracy # dice, accuracy
