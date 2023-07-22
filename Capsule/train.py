@@ -76,14 +76,12 @@ def get_loss_function(type):
     '''
     if type == "ce": 
         loss = nn.CrossEntropyLoss()
-    elif type == "nll": 
-        loss = nn.NLLLoss()
-    elif type == "bce": 
-        loss = nn.BCELoss()
     elif type == "mse": 
         loss = nn.MSELoss()
     elif type == "margin":
         loss = MarginLoss()
+    elif type == "spread":
+        loss = SpreadLoss()
     else: 
         raise NotImplementedError()
 

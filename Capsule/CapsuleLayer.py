@@ -211,7 +211,7 @@ class AdaptiveCapsuleHead(nn.Module):
             p = p.reshape(b, d // (self.P ** 2), self.P ** 2, h, w)
        
         p_out, a_out = self.routinglayer(p, a)
-        a_out = torch.log(a_out / (1 - a_out + EPS))
+        # a_out = torch.log(a_out / (1 - a_out + EPS))
        
         if get_capsules:
             return p_out, a_out

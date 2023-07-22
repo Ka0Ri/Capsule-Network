@@ -443,11 +443,10 @@ class MarginLoss(nn.Module):
             
 class SpreadLoss(nn.Module):
     '''Spread loss = |max(0, margin - (at - ai))| ^ 2'''
-    def __init__(self, num_classes, m_min=0.1, m_max=1):
+    def __init__(self, m_min=0.1, m_max=1):
         super(SpreadLoss, self).__init__()
         self.m_min = m_min
         self.m_max = m_max
-        self.num_classes = num_classes
 
     def forward(self, output, target, r=0.9):
         b = output.shape[0]
