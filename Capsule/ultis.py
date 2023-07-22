@@ -439,7 +439,7 @@ class MarginLoss(nn.Module):
         pos_part = torch.relu(self.pos - output) ** 2
         neg_part = torch.relu(output - self.neg) ** 2
         loss = gt * pos_part + self.lam * (1-gt) * neg_part
-        return torch.mean(loss)
+        return torch.sum(loss)
             
 class SpreadLoss(nn.Module):
     '''Spread loss = |max(0, margin - (at - ai))| ^ 2'''
@@ -457,6 +457,6 @@ class SpreadLoss(nn.Module):
         at_sum = torch.sum(at, dim=1, keepdim=True)
         at = (at_sum - at) * (1 - gt) + at
        
-        loss = torch.mean(torch.relu(margin - (at - output)) **2)
+        loss = torch.sum(torch.relu(margin - (at - output)) **2)
     
         return loss

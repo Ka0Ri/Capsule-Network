@@ -88,6 +88,15 @@ class CapsuleRouting(nn.Module):
             self.W_ij_list = nn.ModuleList([nn.Conv3d(1, self.C * self.P * self.P, 
                 kernel_size=(self.P * self.P, 1, 1), stride=(self.P * self.P, 1, 1), bias=False)
                             for i in range(self.B)])
+        
+        self.projection = nn.Conv3d(1, 1, kernel_size=(self.P * self.P, 1, 1))
+    
+    def linear_project(self, u):
+        '''
+        '''
+        b, C, P, h, w = u.shape
+        capsule_projection = torch.concat([self.projection(x_sub) for x_sub in torch.split(u, 1, dim=1)], dim=1)
+        return capsule_projection
 
     def zero_routing(self, u):
 
@@ -95,10 +104,12 @@ class CapsuleRouting(nn.Module):
         # u = max_min_norm(u, dim=3)
 
         v = squash(torch.mean(u, dim=1, keepdim=True), dim=3)
+        v = v.squeeze(1)
         # v = torch.sum(u, dim=1, keepdim=True)
-        a_out = safe_norm(v, dim=3)
+        a_out = self.linear_project(v)
+        # a_out = safe_norm(v, dim=3)
         # a_out = torch.sigmoid(a_out)
-        return v.squeeze(1), a_out.squeeze(1).squeeze(2)
+        return v, a_out.squeeze(2)
 
     def max_min_routing(self, u):
         
@@ -172,7 +183,7 @@ class CapsuleRouting(nn.Module):
             cost_h = torch.sum(0.5*torch.log(sigma_sq) * r_sum, dim=3, keepdim=True)
             # a_out <- (b, 1, C, 1, f, f)
             # print(cost_h)
-            a = torch.sigmoid(- 0.1 * cost_h)
+            a = torch.sigmoid(- 0.01 * cost_h)
         
         return mu.squeeze(1), a.squeeze(1).squeeze(2)
     
