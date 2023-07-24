@@ -172,3 +172,4 @@ smallNorb
 affMnist
 centerMnist
 *.h5
+config/new-config.yml
