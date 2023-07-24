@@ -208,7 +208,7 @@ class CapsuleRouting(nn.Module):
         for iter_ in range(self.iters):
             #fuzzy coeff
             if iter_ > 0:
-                r_n = safe_norm(u - mu, dim=3) ** (2. / (m - 1))
+                r_n = safe_norm(u - mu, dim=3, keepdim=True) ** (2. / (m - 1))
                 r_d = torch.sum(1. / r_n, dim=2, keepdim=True)
                 # r <- (b, B, C, 1, f, f)
                 r = (1. / (r_n * r_d)) ** m 
