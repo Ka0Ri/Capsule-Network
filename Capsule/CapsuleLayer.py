@@ -144,6 +144,24 @@ class PrimaryCaps(nn.Module):
         a = torch.sigmoid(a.squeeze(2))
         return p, a
 
+class CapsulePooling(nn.Module):
+    def __init__(self, size=(1, 1)) -> None:
+        super().__init__()
+        self.size = size
+        self.pooling = nn.AdaptiveMaxPool2d(size, return_indices=True)
+
+    def forward(self, v, a):
+        b, d, p, h, w = v.shape
+        a_out, indices = self.pooling(a)
+
+        indices_tile = torch.unsqueeze(indices, 2).expand(-1, -1, p, -1, -1)
+        indices_tile= indices_tile.reshape(b, d * p, -1)
+        v_flatten = v.reshape(b, d * p, -1)
+        v = torch.gather(v_flatten, 2, indices_tile)
+        v_out = v.reshape(b, d, p, self.size[0], self.size[0])
+
+        return v_out, a_out
+
 class AdaptiveCapsuleHead(nn.Module):
     '''
     Capsule Header combines of Primary Capsule and Linear Capsule.
@@ -161,6 +179,7 @@ class AdaptiveCapsuleHead(nn.Module):
         pooling = head['caps']['pooling']
         self.P = head['caps']['cap_dims']
         self.cap_style = head['caps']['cap_style']
+        self.reduce  = head['caps']['reduce']
        
         assert n_emb % (self.P * self.P) == 0, "embedding is not divisible by P * P"
         assert B % (self.P * self.P) == 0, "channel is not divisible by P * P"
@@ -184,6 +203,9 @@ class AdaptiveCapsuleHead(nn.Module):
         if pooling == 'avg':
             self.activation.add_module('pooling', nn.AdaptiveAvgPool2d((1, 1)))
         self.activation.add_module('sigmoid', nn.Sigmoid())
+
+        if self.reduce:
+            self.capspooling = CapsulePooling(size=(1, 1))
 
         # Routing Layer
         self.routinglayer = CapsuleRouting(self.B, head['n_cls'], self.P, self.cap_style, head['caps']['routing'])
@@ -212,6 +234,8 @@ class AdaptiveCapsuleHead(nn.Module):
        
         p_out, a_out = self.routinglayer(p, a)
         # a_out = torch.log(a_out / (1 - a_out + EPS))
+        if self.reduce:
+            p_out, a_out = self.capspooling(p_out, a_out)
        
         if get_capsules:
             return p_out, a_out

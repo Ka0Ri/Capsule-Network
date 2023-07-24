@@ -16,9 +16,9 @@ architect_settings:
                 n_emb: 512
                 is_caps: true # effective
                 caps:
-                        pooling: avg
+                        pooling: None
+                        reduce: true
                         cap_style: c # c: by channel, hw: by height and width
-                        reduce: None
                         cap_dims: 4
                         routing:
                                 type: None # effective

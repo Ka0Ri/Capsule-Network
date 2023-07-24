@@ -5,12 +5,12 @@ import torch.nn.functional as F
 
 EPS = 10e-6
 
-def safe_norm(s, dim=-1):
+def safe_norm(s, dim=-1, keepdim=False):
     '''
     Calculate norm of capsule
     s: unormalized capsule
     '''
-    squared_norm = (s ** 2).sum(dim=dim, keepdim=True)
+    squared_norm = (s ** 2).sum(dim=dim, keepdim=keepdim)
     return torch.sqrt(squared_norm + EPS)
 
 def squash(s, dim=-1):
@@ -19,7 +19,7 @@ def squash(s, dim=-1):
     s: unormalized capsule
     v = (|s|^2)/(1+|s|^2)*(s/|s|)
     '''
-    norm = safe_norm(s, dim=dim)
+    norm = safe_norm(s, dim=dim, keepdim=True)
     scale = norm ** 2 / (1 + norm ** 2)
     v = scale * s / norm
     return v
@@ -39,7 +39,7 @@ def max_min_norm(s, dim=-1):
     norm = safe_norm(s, dim=dim)
     max_norm, _ = torch.max(norm, dim=1, keepdim=True)
     min_norm, _ = torch.min(norm, dim=1, keepdim=True)
-    return s / (max_norm - min_norm)
+    return s / (max_norm - min_norm + EPS)
 
 class CapsuleRouting(nn.Module):
     '''
@@ -86,30 +86,32 @@ class CapsuleRouting(nn.Module):
                 , max=1))
         else:
             self.W_ij_list = nn.ModuleList([nn.Conv3d(1, self.C * self.P * self.P, 
-                kernel_size=(self.P * self.P, 1, 1), stride=(self.P * self.P, 1, 1), bias=False)
+                kernel_size=(self.P * self.P, 3, 3), stride=(self.P * self.P, 1, 1), padding=(0, 1, 1))
                             for i in range(self.B)])
+            # kaiming initialization for self.W_ij_list
+            for i in range(self.B):
+                nn.init.kaiming_uniform_(self.W_ij_list[i].weight, a=np.sqrt(5))
         
-        self.projection = nn.Conv3d(1, 1, kernel_size=(self.P * self.P, 1, 1))
+    #     self.projection = nn.Conv3d(1, 1, kernel_size=(self.P * self.P, 1, 1))
     
-    def linear_project(self, u):
-        '''
-        '''
-        b, C, P, h, w = u.shape
-        capsule_projection = torch.concat([self.projection(x_sub) for x_sub in torch.split(u, 1, dim=1)], dim=1)
-        return capsule_projection
+    # def linear_project(self, u):
+    #     '''
+    #     '''
+    #     b, C, P, h, w = u.shape
+    #     capsule_projection = torch.concat([self.projection(x_sub) for x_sub in torch.split(u, 1, dim=1)], dim=1)
+    #     return capsule_projection.squeeze(2)
 
     def zero_routing(self, u):
 
         # TODO: max_min_norm is not necessary, but we dont know
         # u = max_min_norm(u, dim=3)
 
-        v = squash(torch.mean(u, dim=1, keepdim=True), dim=3)
+        # v = squash(torch.mean(u, dim=1, keepdim=True), dim=3)
+        v = torch.sum(u, dim=1, keepdim=True)
         v = v.squeeze(1)
-        # v = torch.sum(u, dim=1, keepdim=True)
-        a_out = self.linear_project(v)
-        # a_out = safe_norm(v, dim=3)
-        # a_out = torch.sigmoid(a_out)
-        return v, a_out.squeeze(2)
+        # a_out = self.linear_project(v)
+        a_out = safe_norm(v, dim=2)
+        return v, a_out
 
     def max_min_routing(self, u):
         
@@ -119,8 +121,11 @@ class CapsuleRouting(nn.Module):
 
         for i in range(self.iters):
             ## c <- (b, B, C, 1, f, f)
+            # v = torch.sum(c * u, dim=1, keepdim=True)
+            # import pdb; pdb.set_trace()
             v = squash(torch.sum(c * u, dim=1, keepdim=True), dim=3) #non-linear activation of weighted sum v = sum(c*u)
             ## v <- (b, 1, C, P * P, f, f)
+            
             if i != self.iters - 1:
                 r = r + torch.sum(u * v, dim=3, keepdim=True) #consine similarity u*v
                 ## r <- (b, B, C, 1, f, f)
@@ -128,8 +133,10 @@ class CapsuleRouting(nn.Module):
                 min_r, _ = torch.min(r, dim=2, keepdim=True)
                 c = (r - min_r)/(max_r - min_r) #c_ij = p + (b - min(b))/(max(b) - min(b))*(q - p)
 
-        a_out = safe_norm(v, dim=3)
-        return v.squeeze(1), a_out.squeeze(1).squeeze(2)
+        v = v.squeeze(1)
+        # a_out = self.linear_project(v)
+        a_out = safe_norm(v, dim=2)
+        return v, a_out
     
     def dynamic(self, u):
         '''
@@ -142,14 +149,16 @@ class CapsuleRouting(nn.Module):
         for i in range(self.iters):
             c = torch.softmax(r, dim=2) #c_ij = exp(r_ij)/sum_k(exp(r_ik))
             ## c <- (b, B, C, 1, f, f)
-            v = squash(torch.sum(c * u, dim=1, keepdim=True), dim=3) #non-linear activation of weighted sum v = sum(c*u)
+            v = torch.sum(c * u, dim=1, keepdim=True) #non-linear activation of weighted sum v = sum(c*u)
             ## v <- (b, 1, C, P * P, f, f)
             if i != self.iters - 1:
                 r = r + torch.sum(u * v, dim=3, keepdim=True) #consine similarity u*v
                 ## r <- (b, B, C, 1, f, f)
 
-        a_out = safe_norm(v, dim=3)
-        return v.squeeze(1), a_out.squeeze(1).squeeze(2)
+        v = v.squeeze(1)
+        # a_out = self.linear_project(v)
+        a_out = safe_norm(v, dim=2)
+        return v, a_out
         
     def EM(self, u, a):
         '''
@@ -218,8 +227,8 @@ class CapsuleRouting(nn.Module):
     
     def forward(self, p, a):
 
-        b, B, P, h, w = p.shape
         if self.cap_style == 'hw':
+            b, B, P, h, w = p.shape
             p = p.reshape(-1, self.B, self.P, self.P, h, w)
             # Multiplying with Transformations weights matrix
             u = torch.einsum('bBijHW, BjkC -> bBCikHW', p, self.W_ij)
@@ -227,8 +236,10 @@ class CapsuleRouting(nn.Module):
         else:
             # B times of 3D convolutions of shape (C * P, 1, 1) to get B x C votes
             pre_votes = [transform(x_sub) for transform, x_sub in zip(self.W_ij_list, torch.split(p, 1, dim=1))]
-            u = torch.concat([vote.reshape(-1, 1, self.C, P, h, w)
-                              for vote in pre_votes], dim=1)
+            u = torch.concat([vote.unsqueeze(1) for vote in pre_votes], dim=1)
+            b, B, C, P, h, w = u.shape
+            u = u.reshape(-1, B, self.C, self.P * self.P, h, w)
+
 
         if self.mode == "dynamic":
             v, a = self.dynamic(u)
