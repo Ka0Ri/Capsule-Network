@@ -85,8 +85,11 @@ class CapsuleRouting(nn.Module):
                 + torch.empty(self.B, self.P, self.P, self.C).uniform_(-bound, bound)
                 , max=1))
         else:
+            # self.W_ij_list = nn.ModuleList([nn.Conv3d(1, self.C * self.P * self.P, 
+            #     kernel_size=(self.P * self.P, 3, 3), stride=(self.P * self.P, 1, 1), padding=(0, 1, 1))
+            #                 for i in range(self.B)])
             self.W_ij_list = nn.ModuleList([nn.Conv3d(1, self.C * self.P * self.P, 
-                kernel_size=(self.P * self.P, 3, 3), stride=(self.P * self.P, 1, 1), padding=(0, 1, 1))
+                kernel_size=(self.P * self.P, 7, 7), stride=(self.P * self.P, 1, 1))
                             for i in range(self.B)])
             # kaiming initialization for self.W_ij_list
             for i in range(self.B):
@@ -149,7 +152,7 @@ class CapsuleRouting(nn.Module):
         for i in range(self.iters):
             c = torch.softmax(r, dim=2) #c_ij = exp(r_ij)/sum_k(exp(r_ik))
             ## c <- (b, B, C, 1, f, f)
-            v = torch.sum(c * u, dim=1, keepdim=True) #non-linear activation of weighted sum v = sum(c*u)
+            v = squash(torch.sum(c * u, dim=1, keepdim=True), dim=3) #non-linear activation of weighted sum v = sum(c*u)
             ## v <- (b, 1, C, P * P, f, f)
             if i != self.iters - 1:
                 r = r + torch.sum(u * v, dim=3, keepdim=True) #consine similarity u*v

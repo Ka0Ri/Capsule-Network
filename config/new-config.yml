@@ -5,8 +5,8 @@ logger:
 task: classification # segmentation, classification
 architect_settings:
         backbone:
-                name: fcn-m
-                is_backbone: true
+                name: resnet-s
+                is_backbone: false
                 is_full: false
                 is_pretrained: false
                 is_freeze: false
@@ -17,7 +17,7 @@ architect_settings:
                 is_caps: true # effective
                 caps:
                         pooling: None
-                        reduce: true
+                        reduce: false
                         cap_style: c # c: by channel, hw: by height and width
                         cap_dims: 4
                         routing:
@@ -29,7 +29,7 @@ dataset_settings:
         path: data/CIFAR10-features
         img_size: 224
 training_settings: 
-        gpu_ids: [0]
+        gpu_ids: [1]
         n_gpu: 1
         loss: ce # spread < margin < ce
         metric: accuracy # dice, accuracy
