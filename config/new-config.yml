@@ -11,7 +11,7 @@ architect_settings:
                 is_pretrained: false
                 is_freeze: false
         head:
-                n_cls: 100
+                n_cls: 10
                 n_layers: 1
                 n_emb: 512
                 is_caps: true # effective
@@ -25,8 +25,8 @@ architect_settings:
                                 iters: 3
                                 temp: 1.5
 dataset_settings:
-        name: CIFAR100-feats # VOC2012, LungCT-Scan, CIFAR10, CIFAR100, Caltech101, CIFAR10-feats
-        path: data/CIFAR100-features
+        name: CIFAR10-feats # VOC2012, LungCT-Scan, CIFAR10, CIFAR100, Caltech101, CIFAR10-feats
+        path: data/CIFAR10-features
         img_size: 224
 training_settings: 
         gpu_ids: [0]

@@ -36,7 +36,7 @@ def power_squash(s, dim=-1, m=6):
     return v
 
 def max_min_norm(s, dim=-1):
-    norm = safe_norm(s, dim=dim)
+    norm = safe_norm(s, dim=dim, keepdim=True)
     max_norm, _ = torch.max(norm, dim=1, keepdim=True)
     min_norm, _ = torch.min(norm, dim=1, keepdim=True)
     return s / (max_norm - min_norm + EPS)
