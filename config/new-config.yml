@@ -6,7 +6,7 @@ task: classification # segmentation, classification
 architect_settings:
         backbone:
                 name: resnet-s
-                is_backbone: true
+                is_backbone: false
                 is_full: false
                 is_pretrained: false
                 is_freeze: true
@@ -18,15 +18,16 @@ architect_settings:
                 caps:
                         pooling: avg
                         reduce: false
-                        cap_style: c # c: by channel, hw: by height and width
+                        cap_style: ortho # c: by channel, hw: by height and width, ortho: orthogonal porjection
                         cap_dims: 4
+                        projection_type: 3D ## linear, ortho, 3D
                         routing:
                                 type: dynamic # effective
                                 iters: 3
                                 temp: 1.5
 dataset_settings:
-        name: CIFAR10 # VOC2012, LungCT-Scan, CIFAR10, CIFAR100, Caltech101, CIFAR10-feats
-        path: data
+        name: CIFAR10-feats # VOC2012, LungCT-Scan, CIFAR10, CIFAR100, Caltech101, CIFAR10-feats
+        path: data/CIFAR10-features
         img_size: 224
 training_settings: 
         gpu_ids: [0]

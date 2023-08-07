@@ -6,6 +6,7 @@ Authors: dtvu1707@gmail.com
 import torch
 import torch.nn as nn
 from Routing import CapsuleRouting, squash, EPS
+import math
 
 #--------------------Capsule Layer------------------------------------------------
     
@@ -161,6 +162,41 @@ class CapsulePooling(nn.Module):
         v_out = v.reshape(b, d, p, self.size[0], self.size[0])
 
         return v_out, a_out
+    
+class LinearCapsPro(nn.Module):
+    def __init__(self, in_features, num_C, num_D, eps=0.0001):
+        super(LinearCapsPro, self).__init__()
+        self.in_features = in_features
+        self.num_C = num_C
+        self.num_D = num_D
+        self.eps = eps 
+        self.weight = nn.Parameter(torch.Tensor(num_C*num_D, in_features))
+            
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        stdv = 1. / math.sqrt(self.weight.size(1))
+        self.weight.data.uniform_(-stdv, stdv)
+            
+    def forward(self, x, eye):
+        weight_caps = self.weight[:self.num_D]
+        sigma = torch.inverse(torch.mm(weight_caps, torch.t(weight_caps))+self.eps*eye)
+        sigma = torch.unsqueeze(sigma, dim=0)
+        for ii in range(1, self.num_C):
+            weight_caps = self.weight[ii*self.num_D:(ii+1)*self.num_D]
+            sigma_ = torch.inverse(torch.mm(weight_caps, torch.t(weight_caps))+self.eps*eye)
+            sigma_ = torch.unsqueeze(sigma_, dim=0)
+            sigma = torch.cat((sigma, sigma_))
+        
+        out = torch.matmul(x, torch.t(self.weight))
+        out = out.view(out.shape[0], self.num_C, 1, self.num_D)
+        out = torch.matmul(out, sigma)
+        out = torch.matmul(out, self.weight.view(self.num_C, self.num_D, self.in_features))
+        out = torch.squeeze(out, dim=2)
+        out = torch.matmul(out, torch.unsqueeze(x, dim=2))
+        out = torch.squeeze(out, dim=2)
+        
+        return torch.sqrt(out)
 
 class AdaptiveCapsuleHead(nn.Module):
     '''
@@ -196,6 +232,11 @@ class AdaptiveCapsuleHead(nn.Module):
             self.B = (B // (self.P ** 2)) * (n_layers == 1) + (n_emb // (self.P ** 2)) * (n_layers > 1) 
             if pooling == 'avg':
                 self.primary_capsule.add_module('pooling', nn.AdaptiveAvgPool2d((1, 1)))
+        elif(self.cap_style == 'ortho'):
+            self.B = B  * (n_layers == 1) + n_emb * (n_layers > 1)
+            self.primary_capsule.add_module('pooling', nn.AdaptiveAvgPool2d((1, 1)))
+            self.orthogonal = LinearCapsPro(in_features=self.B, num_C=head['n_cls'], num_D=self.P*self.P)
+
 
         # Actiation for Primary Capsule
         self.activation = nn.Sequential()
@@ -208,7 +249,8 @@ class AdaptiveCapsuleHead(nn.Module):
             self.capspooling = CapsulePooling(size=(1, 1))
 
         # Routing Layer
-        self.routinglayer = CapsuleRouting(self.B, head['n_cls'], self.P, self.cap_style, head['caps']['routing'])
+        self.routinglayer = CapsuleRouting(self.B, head['n_cls'], self.P, 
+                            head['caps']['projection_type'], self.cap_style, head['caps']['routing'])
           
 
     def forward(self, x, get_capsules=False):
@@ -232,6 +274,10 @@ class AdaptiveCapsuleHead(nn.Module):
             p = p.reshape(b, d, self.P ** 2, 1, 1)
         elif(self.cap_style == 'c'):
             p = p.reshape(b, d // (self.P ** 2), self.P ** 2, h, w)
+        elif(self.cap_style == 'ortho'):
+            eye = torch.eye(self.P*self.P).cuda()
+            a = self.orthogonal(p, eye=eye)
+            return a
        
         p_out, a_out = self.routinglayer(p, a)
         if self.reduce:
