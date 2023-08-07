@@ -12,14 +12,14 @@ architect_settings:
                 is_freeze: true
         head:
                 n_cls: 10
-                n_layers: 2
+                n_layers: 1
                 n_emb: 512
                 is_caps: true # effective
                 caps:
                         pooling: avg
                         reduce: false
                         cap_style: ortho # c: by channel, hw: by height and width, ortho: orthogonal porjection
-                        cap_dims: 4
+                        cap_dims: 2
                         projection_type: 3D ## linear, ortho, 3D
                         routing:
                                 type: dynamic # effective
@@ -36,7 +36,7 @@ training_settings:
         metric: accuracy # dice, accuracy
         ckpt_path: "./mode/test"
         n_epoch: 100
-        n_batch: 32
+        n_batch: 64
         num_workers: 0
         optimizer: adam
         lr_scheduler: step

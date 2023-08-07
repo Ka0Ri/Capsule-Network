@@ -275,6 +275,7 @@ class AdaptiveCapsuleHead(nn.Module):
         elif(self.cap_style == 'c'):
             p = p.reshape(b, d // (self.P ** 2), self.P ** 2, h, w)
         elif(self.cap_style == 'ortho'):
+            p = p.squeeze(2).squeeze(2)
             eye = torch.eye(self.P*self.P).cuda()
             a = self.orthogonal(p, eye=eye)
             return a
