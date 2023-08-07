@@ -228,6 +228,7 @@ class AdaptiveCapsuleHead(nn.Module):
         # x <- (b, C, h, w)
         b, d, h, w =  p.shape
         if(self.cap_style == 'hw'):
+            p = p.unsqueeze(4).unsqueeze(5)
             p = p.reshape(b, d, self.P ** 2, 1, 1)
         elif(self.cap_style == 'c'):
             p = p.reshape(b, d // (self.P ** 2), self.P ** 2, h, w)

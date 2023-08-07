@@ -8,6 +8,7 @@ from torchvision.models import resnet18, resnet50, resnet152, \
                                 efficientnet_v2_l, efficientnet_v2_m, efficientnet_v2_s, \
                                 inception_v3, \
                                 swin_t, swin_b, swin_s
+from torchvision.models.segmentation.deeplabv3 import DeepLabHead
                                 
 from torchvision.models import ResNet18_Weights, ResNet50_Weights, ResNet152_Weights, \
                                 DenseNet121_Weights, DenseNet161_Weights, DenseNet201_Weights, \
@@ -36,14 +37,14 @@ MODEL = {
         }
 
 WEIGHTS = {
-            "resnet-s": ResNet18_Weights, "resnet-m": ResNet50_Weights, "resnet-l": ResNet152_Weights,
-           "densenet-s": DenseNet121_Weights, "densenet-m": DenseNet161_Weights, "densenet-l": DenseNet201_Weights,
-           "efficientnet-s": EfficientNet_V2_S_Weights, "efficientnet-m": EfficientNet_V2_M_Weights, "efficientnet-l": EfficientNet_V2_L_Weights,
-           "inception": Inception_V3_Weights,
-           "swin-s": Swin_T_Weights, "swin-m": Swin_S_Weights, "swin-l": Swin_B_Weights,
+        "resnet-s": ResNet18_Weights, "resnet-m": ResNet50_Weights, "resnet-l": ResNet152_Weights,
+        "densenet-s": DenseNet121_Weights, "densenet-m": DenseNet161_Weights, "densenet-l": DenseNet201_Weights,
+        "efficientnet-s": EfficientNet_V2_S_Weights, "efficientnet-m": EfficientNet_V2_M_Weights, "efficientnet-l": EfficientNet_V2_L_Weights,
+        "inception": Inception_V3_Weights,
+        "swin-s": Swin_T_Weights, "swin-m": Swin_S_Weights, "swin-l": Swin_B_Weights,
 
-           "fcn-m": FCN_ResNet50_Weights, "fcn-l": FCN_ResNet101_Weights,
-            "deeplab-m": DeepLabV3_ResNet50_Weights, "deeplab-l": DeepLabV3_ResNet101_Weights
+        "fcn-m": FCN_ResNet50_Weights, "fcn-l": FCN_ResNet101_Weights,
+        "deeplab-m": DeepLabV3_ResNet50_Weights, "deeplab-l": DeepLabV3_ResNet101_Weights
         }
 
 
@@ -201,6 +202,7 @@ class CapsuleWrappingSegment(nn.Module):
             else:
                 self.backbone.classifier = Simple_Classifier(self.num_ftrs, self.n_cls,
                                                             self.n_emb, self.n_layers, None)
+                # self.backbone.classifier = DeepLabHead(self.num_ftrs, self.n_cls)
         
     def _model_selection(self):
 

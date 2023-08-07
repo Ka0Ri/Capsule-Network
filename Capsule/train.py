@@ -16,7 +16,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 import torchmetrics
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
-seed_everything(SEED=42)
+seed_everything(SEED=666)
 torch.set_float32_matmul_precision('medium')
 
 def get_lr_scheduler_config(optimizer, settings):
@@ -366,7 +366,7 @@ if __name__ == "__main__":
     neptune_logger = NeptuneLogger(
             project=PARAMS['logger']['project'],
             # with_id="AIS-113",
-            # api_key=PARAMS['logger']['api_key'],
+            api_key=PARAMS['logger']['api_key'],
             tags=PARAMS['logger']['tags'],
             log_model_checkpoints=False
         )

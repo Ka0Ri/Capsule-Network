@@ -283,7 +283,7 @@ class VOC2012read(Dataset):
     def __init__(self, mode, data_path, imgsize=224, transform=None):
 
         # load Caltech101 dataset
-      
+        self.size = imgsize
         if(mode == 'train'):
             self.dataset = VOCSegmentation(root=data_path, download=False, image_set='train')
         elif(mode == 'val'):
@@ -297,7 +297,7 @@ class VOC2012read(Dataset):
         if(self.transform is None):
             self.transformAnn = transforms.Compose([transforms.Resize((imgsize, imgsize)),
                                                     ])
-            self.transformImg = partial(SemanticSegmentation, resize_size=(imgsize, imgsize))()
+            self.transformImg = partial(SemanticSegmentation, resize_size=imgsize)()
 
     @staticmethod
     def _convert_to_segmentation_mask(mask):
@@ -324,10 +324,10 @@ class VOC2012read(Dataset):
         return (len(self.dataset))
     
     def __getitem__(self, idx):
-        image = self.dataset[idx][0]
+        image = self.dataset[idx][0].convert("RGB")
         mask = self.dataset[idx][1].convert("RGB")
         mask = self._convert_to_segmentation_mask(mask)
-      
+    
         if self.transform is None:
             tran_image = self.transformImg(image)
             mask = self.transformAnn(mask)

@@ -75,25 +75,25 @@ class CapsuleRouting(nn.Module):
         self.C = C
         # self._lambda = lam # for fuzzy and EM routing
 
-        fan_in = self.B * self.P * self.P # in_caps types * receptive field size
-        std = np.sqrt(2.) / np.sqrt(fan_in)
-        bound = np.sqrt(3.) * std
-        if(self.cap_style == 'hw'):
-            # Out ← [1, B * K * K, C, P, P] noisy_identity initialization
-            self.W_ij = nn.Parameter(torch.clamp(1.*torch.eye(self.P,self.P).repeat( \
-                self.B, self.C, 1, 1).permute(0, 2, 3, 1) \
-                + torch.empty(self.B, self.P, self.P, self.C).uniform_(-bound, bound)
-                , max=1))
-        else:
-            # self.W_ij_list = nn.ModuleList([nn.Conv3d(1, self.C * self.P * self.P, 
-            #     kernel_size=(self.P * self.P, 3, 3), stride=(self.P * self.P, 1, 1), padding=(0, 1, 1))
-            #                 for i in range(self.B)])
-            self.W_ij_list = nn.ModuleList([nn.Conv3d(1, self.C * self.P * self.P, 
-                kernel_size=(self.P * self.P, 7, 7), stride=(self.P * self.P, 1, 1))
-                            for i in range(self.B)])
-            # kaiming initialization for self.W_ij_list
-            for i in range(self.B):
-                nn.init.kaiming_uniform_(self.W_ij_list[i].weight, a=np.sqrt(5))
+        # fan_in = self.B * self.P * self.P # in_caps types * receptive field size
+        # std = np.sqrt(2.) / np.sqrt(fan_in)
+        # bound = np.sqrt(3.) * std
+        # if(self.cap_style == 'hw'):
+        #     # Out ← [1, B * K * K, C, P, P] noisy_identity initialization
+        #     self.W_ij = nn.Parameter(torch.clamp(1.*torch.eye(self.P,self.P).repeat( \
+        #         self.B, self.C, 1, 1).permute(0, 2, 3, 1) \
+        #         + torch.empty(self.B, self.P, self.P, self.C).uniform_(-bound, bound)
+        #         , max=1))
+        # else:
+        self.W_ij_list = nn.ModuleList([nn.Conv3d(1, self.C * self.P * self.P, 
+            kernel_size=(self.P * self.P, 3, 3), stride=(self.P * self.P, 1, 1), padding=(0, 1, 1))
+                        for i in range(self.B)])
+        # self.W_ij_list = nn.ModuleList([nn.Conv3d(1, self.C * self.P * self.P, 
+        #     kernel_size=(self.P * self.P, 7, 7), stride=(self.P * self.P, 1, 1))
+        #                 for i in range(self.B)])
+        # kaiming initialization for self.W_ij_list
+        for i in range(self.B):
+            nn.init.kaiming_uniform_(self.W_ij_list[i].weight, a=np.sqrt(5))
         
     #     self.projection = nn.Conv3d(1, 1, kernel_size=(self.P * self.P, 1, 1))
     
@@ -109,8 +109,8 @@ class CapsuleRouting(nn.Module):
         # TODO: max_min_norm is not necessary, but we dont know
         # u = max_min_norm(u, dim=3)
 
-        # v = squash(torch.mean(u, dim=1, keepdim=True), dim=3)
-        v = torch.sum(u, dim=1, keepdim=True)
+        v = squash(torch.mean(u, dim=1, keepdim=True), dim=3)
+        # v = torch.sum(u, dim=1, keepdim=True)
         v = v.squeeze(1)
         # a_out = self.linear_project(v)
         a_out = safe_norm(v, dim=2)
@@ -230,18 +230,18 @@ class CapsuleRouting(nn.Module):
     
     def forward(self, p, a):
 
-        if self.cap_style == 'hw':
-            b, B, P, h, w = p.shape
-            p = p.reshape(-1, self.B, self.P, self.P, h, w)
-            # Multiplying with Transformations weights matrix
-            u = torch.einsum('bBijHW, BjkC -> bBCikHW', p, self.W_ij)
-            u = u.reshape(-1, self.B, self.C, self.P * self.P, h, w)
-        else:
-            # B times of 3D convolutions of shape (C * P, 1, 1) to get B x C votes
-            pre_votes = [transform(x_sub) for transform, x_sub in zip(self.W_ij_list, torch.split(p, 1, dim=1))]
-            u = torch.concat([vote.unsqueeze(1) for vote in pre_votes], dim=1)
-            b, B, C, P, h, w = u.shape
-            u = u.reshape(-1, B, self.C, self.P * self.P, h, w)
+        # if self.cap_style == 'hw':
+        #     b, B, P, h, w = p.shape
+        #     p = p.reshape(-1, self.B, self.P, self.P, h, w)
+        #     # Multiplying with Transformations weights matrix
+        #     u = torch.einsum('bBijHW, BjkC -> bBCikHW', p, self.W_ij)
+        #     u = u.reshape(-1, self.B, self.C, self.P * self.P, h, w)
+        # else:
+        # B times of 3D convolutions of shape (C * P, 1, 1) to get B x C votes
+        pre_votes = [transform(x_sub) for transform, x_sub in zip(self.W_ij_list, torch.split(p, 1, dim=1))]
+        u = torch.concat([vote.unsqueeze(1) for vote in pre_votes], dim=1)
+        b, B, C, P, h, w = u.shape
+        u = u.reshape(-1, B, self.C, self.P * self.P, h, w)
 
 
         if self.mode == "dynamic":
@@ -250,7 +250,7 @@ class CapsuleRouting(nn.Module):
             v, a = self.EM(u, a)
         elif self.mode == "fuzzy":
             v, a = self.fuzzy(u, a)
-        elif self.mode == "max_min":
+        elif self.mode == "max-min":
             v, a = self.max_min_routing(u)
         else:
             v, a = self.zero_routing(u)

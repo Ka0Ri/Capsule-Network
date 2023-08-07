@@ -2,40 +2,40 @@ logger:
         project: kaori/Capsule-Network # replace with your own
         api_key: eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIyZjZiMDA2YS02MDM3LTQxZjQtOTE4YS1jODZkMTJjNGJlMDYifQ== # replace with your own
         tags: None
-task: classification # segmentation, classification
+task: segmentation # segmentation, classification
 architect_settings:
         backbone:
-                name: resnet-s
+                name: deeplab-m
                 is_backbone: true
                 is_full: false
                 is_pretrained: false
-                is_freeze: true
+                is_freeze: false
         head:
-                n_cls: 10
-                n_layers: 2
+                n_cls: 21
+                n_layers: 1
                 n_emb: 512
                 is_caps: true # effective
                 caps:
-                        pooling: avg
+                        pooling: None
                         reduce: false
                         cap_style: c # c: by channel, hw: by height and width
                         cap_dims: 4
                         routing:
-                                type: dynamic # effective
+                                type: max-min # effective
                                 iters: 3
                                 temp: 1.5
 dataset_settings:
-        name: CIFAR10 # VOC2012, LungCT-Scan, CIFAR10, CIFAR100, Caltech101, CIFAR10-feats
-        path: data
+        name: VOC2012 # VOC2012, LungCT-Scan, CIFAR10, CIFAR100, Caltech101, CIFAR10-feats
+        path: data/
         img_size: 224
 training_settings: 
-        gpu_ids: [0]
+        gpu_ids: [1]
         n_gpu: 1
         loss: ce # spread < margin < ce
-        metric: accuracy # dice, accuracy
+        metric: dice # dice, accuracy
         ckpt_path: "./mode/test"
         n_epoch: 100
-        n_batch: 32
+        n_batch: 16
         num_workers: 0
         optimizer: adam
         lr_scheduler: step
