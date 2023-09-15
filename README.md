@@ -19,6 +19,11 @@ conda activate Capsule
 sh env-create.sh
 ```
 #
+## Environments Settings
+- Run: 
+```
+python Capsule/train.py -c config/new-config.yml
+```
 
 ## Configuration (Config file)
 The configurations, a [config.yaml](Modules/config.yaml), encompassing the model architecture and training settings, as well as dataset settings. The "config.yaml" file follows a structured format, consisting of a list of dictionaries. Each dictionary within the list represents a distinct configuration and saves specific configuration parameters.
